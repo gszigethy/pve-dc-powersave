@@ -1,0 +1,7 @@
+*.swp
+*.swo
+*.bak
+__pycache__/
+.pytest_cache/
+coverage/
+

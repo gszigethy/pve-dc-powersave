@@ -1,0 +1,22 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+BEGIN {
+    require FindBin;
+    # Source checkout uses ../lib; installed nodes use Perl's normal
+    # /usr/share/perl5 module path so older manual copies cannot shadow it.
+    unshift @INC, "$FindBin::Bin/../lib" if $FindBin::Bin !~ m{^/usr/sbin/?$};
+}
+use Getopt::Long qw(GetOptions);
+use PVE::DC::PowerSave::Controller;
+use PVE::DC::PowerSave::RuntimeStateCollector;
+use PVE::DC::PowerSave::EventObserver;
+use PVE::DC::PowerSave::CpupowerBackend;
+my ($once, $verbose, $config);
+GetOptions('once' => \$once, 'verbose' => \$verbose, 'config=s' => \$config) or die "usage: $0 [--once] [--verbose] [--config path]\n";
+my $collector = PVE::DC::PowerSave::RuntimeStateCollector->new;
+my $controller = PVE::DC::PowerSave::Controller->new(config_path => $config, verbose => $verbose,
+    collector => $collector, observer => PVE::DC::PowerSave::EventObserver->new($collector),
+    backend => PVE::DC::PowerSave::CpupowerBackend->new);
+$controller->reconcile if $once;
+$controller->run if !$once;

@@ -1,0 +1,14 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  perl-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Perl tests
+        run: prove -Ilib t
+

@@ -1,0 +1,22 @@
+use strict;
+use warnings;
+use Test::More;
+use File::Temp qw(tempfile);
+use lib 'lib';
+use PVE::DC::PowerSave::Config;
+
+my ($fh, $path) = tempfile();
+close($fh);
+my $cfg = PVE::DC::PowerSave::Config->defaults;
+my $digest = PVE::DC::PowerSave::Config->digest($path);
+my $saved = PVE::DC::PowerSave::Config->save($cfg, $path, $digest);
+is(PVE::DC::PowerSave::Config->load($path)->{enabled}, 0, 'configuration starts disabled');
+is($saved, PVE::DC::PowerSave::Config->digest($path), 'digest follows write');
+eval { PVE::DC::PowerSave::Config->save({ %$cfg, enabled => 1 }, $path, $digest) };
+like($@, qr/configuration changed/, 'stale UI write is rejected');
+eval { PVE::DC::PowerSave::Config->parse("enabled: 1\nunknown_key: 1\n") };
+like($@, qr/unknown setting/, 'unknown setting cannot silently change policy');
+eval { PVE::DC::PowerSave::Config->parse("idle_governor: powersave;touch /tmp/x\n") };
+like($@, qr/invalid idle_governor/, 'governor cannot contain shell syntax');
+unlink($path);
+done_testing;
