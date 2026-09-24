@@ -1,6 +1,7 @@
 /* Datacenter -> Power Management. Loaded after pvemanagerlib.js. */
 (function () {
     'use strict';
+    var driverHelpUrl = 'https://github.com/gszigethy/pve-dc-powersave/blob/main/docs/INTEL-PSTATE.md';
 
     function request(options) {
         Ext.Ajax.request(Ext.apply({
@@ -22,6 +23,18 @@
 
         initComponent: function () {
             var me = this;
+            me.commonGovernorStore = Ext.create('Ext.data.Store', {
+                fields: ['name'],
+                data: [],
+            });
+            function governorField(name, label) {
+                return {
+                    xtype: 'combo', name: name, fieldLabel: label, allowBlank: false,
+                    store: me.commonGovernorStore, queryMode: 'local', editable: false,
+                    displayField: 'name', valueField: 'name', forceSelection: true,
+                    emptyText: 'Waiting for all node capabilities',
+                };
+            }
             me.configForm = Ext.create('Ext.form.Panel', {
                 title: 'Cluster policy',
                 bodyPadding: 12,
@@ -29,10 +42,10 @@
                 defaults: { anchor: '100%', labelWidth: 200 },
                 items: [
                     { xtype: 'checkbox', name: 'enabled', fieldLabel: 'Enabled', boxLabel: 'Manage CPU governors' },
-                    { xtype: 'textfield', name: 'active_governor', fieldLabel: 'Active governor', allowBlank: false },
-                    { xtype: 'textfield', name: 'idle_governor', fieldLabel: 'Idle governor', allowBlank: false },
-                    { xtype: 'textfield', name: 'migration_governor', fieldLabel: 'Migration governor', allowBlank: false },
-                    { xtype: 'textfield', name: 'failsafe_governor', fieldLabel: 'Failsafe governor', allowBlank: false },
+                    governorField('active_governor', 'Active governor'),
+                    governorField('idle_governor', 'Idle governor'),
+                    governorField('migration_governor', 'Migration governor'),
+                    governorField('failsafe_governor', 'Failsafe governor'),
                     { xtype: 'numberfield', name: 'reconciliation_interval', fieldLabel: 'Safety reconciliation (s)', minValue: 5, maxValue: 3600 },
                     { xtype: 'numberfield', name: 'event_poll_interval', fieldLabel: 'Task poll (s)', minValue: 1, maxValue: 60 },
                     { xtype: 'numberfield', name: 'idle_candidate_delay', fieldLabel: 'Idle candidate delay (s)', minValue: 0, maxValue: 3600 },
@@ -44,6 +57,11 @@
                         disabled: !Ext.state.Manager.get('GuiCap').dc['Sys.Modify'],
                         handler: function () { me.saveConfig(); } },
                 ],
+            });
+            me.capabilityNotice = Ext.create('Ext.Component', {
+                padding: '10 12',
+                style: { border: '1px solid #d0d0d0', background: '#f5f5f5' },
+                html: 'Checking governors available across all nodes...',
             });
             me.statusStore = Ext.create('Ext.data.Store', {
                 fields: ['node', 'state', 'actual_governors', 'desired_governor', 'running_vm_count',
@@ -83,18 +101,64 @@
             me.items = [
                 { xtype: 'component', html: '<p><strong>Homelab use only.</strong> Production use is not advised. '
                     + 'Idle requires verified guest, task, and CPU policy state.</p>' },
+                me.capabilityNotice,
+                { xtype: 'component', height: 12 },
                 me.configForm,
                 { xtype: 'component', height: 12 },
                 me.statusGrid,
             ];
             me.callParent();
             me.on('show', function () {
-                me.loadConfig(); me.loadStatus();
+                me.loadConfig(); me.loadCapabilities(); me.loadStatus();
                 if (!me.refreshTask) {
-                    me.refreshTask = Ext.TaskManager.start({ run: function () { if (!me.destroyed && me.isVisible()) { me.loadStatus(); } }, interval: 15000 });
+                    me.refreshTask = Ext.TaskManager.start({ run: function () {
+                        if (!me.destroyed && me.isVisible()) { me.loadCapabilities(); me.loadStatus(); }
+                    }, interval: 15000 });
                 }
             });
             me.on('destroy', function () { if (me.refreshTask) { Ext.TaskManager.stop(me.refreshTask); } });
+        },
+
+        loadCapabilities: function () {
+            var me = this;
+            if (me.capabilitiesLoading) { return; }
+            me.capabilitiesLoading = true;
+            request({ url: '/api2/json/cluster/power-management/capabilities', method: 'GET',
+                success: function (response) {
+                    me.capabilitiesLoading = false;
+                    var data = Ext.decode(response.responseText).data;
+                    me.clusterCapabilities = data;
+                    me.commonGovernorStore.loadData((data.common_governors || []).map(function (governor) {
+                        return { name: governor };
+                    }));
+                    if (!data.complete) {
+                        var problems = (data.errors || []).map(function (error) {
+                            return (error.node ? error.node + ': ' : '') + (error.message || error.reason);
+                        });
+                        me.capabilityNotice.update('<strong>Cluster governor discovery is incomplete.</strong> '
+                            + Ext.String.htmlEncode(problems.join('; ') || 'One or more nodes did not report usable capabilities.')
+                            + ' Power management cannot be enabled.');
+                        return;
+                    }
+                    if (!(data.common_governors || []).length) {
+                        me.capabilityNotice.update('<strong>No common CPU governor is available across all nodes.</strong> '
+                            + 'Set the CPU frequency driver mode identically on every node. '
+                            + '<a href="' + driverHelpUrl + '" target="_blank" rel="noopener">'
+                            + 'Intel P-state and Proxmox VE setup guide</a>.');
+                        return;
+                    }
+                    me.capabilityNotice.update('<strong>Governors available on every node:</strong> '
+                        + Ext.String.htmlEncode(data.common_governors.join(', ')));
+                },
+                failure: function (response) {
+                    me.capabilitiesLoading = false;
+                    me.clusterCapabilities = { complete: false, common_governors: [] };
+                    me.commonGovernorStore.removeAll();
+                    me.capabilityNotice.update('<strong>Cluster governor discovery failed.</strong> '
+                        + Ext.String.htmlEncode(response.statusText || 'Capability endpoint unavailable')
+                        + ' Power management cannot be enabled.');
+                },
+            });
         },
 
         loadConfig: function () {
@@ -103,6 +167,7 @@
                 success: function (response) {
                     var data = Ext.decode(response.responseText).data;
                     me.digest = data.digest;
+                    me.loadedConfig = data;
                     me.configForm.getForm().setValues(data);
                     if (data.configuration_error) {
                         Ext.Msg.alert('Invalid cluster policy', Ext.String.htmlEncode(data.configuration_error)
@@ -115,13 +180,27 @@
         saveConfig: function () {
             var me = this;
             var form = me.configForm.getForm();
-            if (!form.isValid()) { return; }
             var values = form.getValues();
             values.enabled = form.findField('enabled').getValue() ? 1 : 0;
+            if (!values.enabled && me.loadedConfig) {
+                ['active_governor', 'idle_governor', 'migration_governor', 'failsafe_governor'].forEach(function (key) {
+                    values[key] = values[key] || me.loadedConfig[key];
+                });
+            }
+            if (values.enabled && (!me.clusterCapabilities || !me.clusterCapabilities.complete)) {
+                Ext.Msg.alert('Power Management', 'Every node must report fresh CPU governor capabilities before the policy can be enabled.');
+                return;
+            }
+            if (values.enabled && !(me.clusterCapabilities.common_governors || []).length) {
+                Ext.Msg.alert('Power Management', 'No common CPU governor is available across all nodes. See the Intel P-state setup guide.');
+                return;
+            }
+            if (values.enabled && !form.isValid()) { return; }
             values.digest = me.digest;
             request({ url: '/api2/json/cluster/power-management', method: 'PUT', params: values,
                 success: function (response) {
                     me.digest = Ext.decode(response.responseText).data.digest;
+                    me.loadCapabilities();
                     me.loadStatus();
                     Ext.Msg.alert('Power Management', 'Cluster policy saved. Nodes will reconcile on their next poll.');
                 },

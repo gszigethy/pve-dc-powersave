@@ -4,7 +4,9 @@ CPU governor management targeting Proxmox VE 8 and 9 clusters. It is designed fo
 **homelabs where idle power use matters**. **Production use is not advised.**
 
 The controller uses running VM and container state, current tasks, and CPU
-policy capabilities to choose a governor for each node. The policy and all
+policy capabilities to choose a governor for each node. Governor choices are
+limited to the intersection supported by every CPU policy on every cluster
+node. The policy and all
 node status are available in **Datacenter → Power Management** in the Proxmox
 web interface. See the [design and safety guide](docs/DESIGN.md) for the state
 machine and migration rules.
@@ -16,7 +18,7 @@ machine and migration rules.
    API routes, and the datacenter UI:
 
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/gszigethy/proxmox-dc-powersave/main/scripts/install.sh \
+   curl -fsSL https://raw.githubusercontent.com/gszigethy/pve-dc-powersave/main/scripts/install.sh \
      | bash
    ```
 
@@ -36,9 +38,12 @@ machine and migration rules.
    governors, running VM/CT counts, protection, reason, and last error.
    Double click a node for driver, CPU policy, version, and timing details.
 
-4. Check `cpupower frequency-info` on every node. Start and stop a VM and a
-   container, then perform a migration while watching both node rows. Only
-   after these checks, tick **Enabled** and save the cluster policy in the UI.
+4. Check `cpupower frequency-info` on every node. If the page reports no common
+   governor, follow the [Intel P-state mode guide](docs/INTEL-PSTATE.md) and
+   configure the CPU frequency driver consistently across the cluster. Start
+   and stop a VM and a container, then perform a migration while watching both
+   node rows. Only after these checks, tick **Enabled** and save the cluster
+   policy in the UI.
 
 The service is local to each node, but the policy is shared. Install it on
 **all** nodes before enabling; an uninstalled node cannot change its governor
@@ -60,7 +65,9 @@ or report status.
 
 Governors are checked on **every CPU frequency policy** on each node. The
 controller reads the actual governor back after a change. Missing or uncertain
-runtime information requests active; it never proves a node idle.
+runtime information requests active; it never proves a node idle. Enabling is
+rejected unless every node reports fresh capabilities and all four configured
+governors are available everywhere.
 
 ## UI and API behavior
 

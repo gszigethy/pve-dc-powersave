@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 readonly PROGRAM="pve-dc-powersave"
 readonly SERVICE="pve-dc-powersave.service"
-repo="gszigethy/proxmox-dc-powersave"
+repo="gszigethy/pve-dc-powersave"
 repo_specified=0
 ref="main"
 source_dir=""
@@ -17,7 +17,7 @@ Usage:
 
 Installs on the current node only. Run it on every PVE cluster node.
 The controller is installed disabled; review /etc/pve/dc-powersave.cfg before
-enabling it. The default repository is gszigethy/proxmox-dc-powersave.
+enabling it. The default repository is gszigethy/pve-dc-powersave.
 EOF
 }
 
@@ -83,7 +83,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y linux-cpupower python3
 
 echo "Installing $PROGRAM ..."
 install -D -m 0755 "$source_dir/bin/$PROGRAM" "/usr/sbin/$PROGRAM"
-for module in Config DesiredState CpupowerBackend RuntimeStateCollector EventObserver Controller; do
+for module in Config DesiredState CpupowerBackend ClusterCapabilities RuntimeStateCollector EventObserver Controller; do
     install -D -m 0644 "$source_dir/lib/PVE/DC/PowerSave/$module.pm" "/usr/share/perl5/PVE/DC/PowerSave/$module.pm"
 done
 install -D -m 0644 "$source_dir/lib/PVE/API2/Cluster/DCPowerSave.pm" "/usr/share/perl5/PVE/API2/Cluster/DCPowerSave.pm"

@@ -148,6 +148,14 @@ If the idle governor is missing on even one policy, the node remains active.
 If management is unavailable, the software does not claim that an idle change
 succeeded.
 
+The Datacenter capability endpoint first intersects the policy governor sets
+on each node, then intersects those node-local results across the cluster. The
+UI only offers this final common set. Enabling a policy is rejected when any
+node is offline, missing, stale, or unable to report CPU policies, when the
+common set is empty, or when a configured governor is outside the common set.
+See the [Intel P-state mode guide](INTEL-PSTATE.md) when otherwise healthy
+nodes expose incompatible governor sets.
+
 ## Configuration and rollout
 
 The essential shared settings are:

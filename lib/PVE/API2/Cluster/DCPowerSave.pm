@@ -4,6 +4,7 @@ use warnings;
 use PVE::RESTHandler;
 use PVE::Cluster;
 use PVE::DC::PowerSave::Config;
+use PVE::DC::PowerSave::ClusterCapabilities;
 use base qw(PVE::RESTHandler);
 
 my $properties = {
@@ -17,6 +18,19 @@ my $properties = {
     idle_candidate_delay => { type => 'integer', minimum => 0, maximum => 3600 },
     boot_protection_period => { type => 'integer', minimum => 0, maximum => 86400 },
 };
+
+sub cluster_capabilities {
+    return PVE::DC::PowerSave::ClusterCapabilities->new->collect;
+}
+
+__PACKAGE__->register_method({
+    name => 'capabilities', path => 'capabilities', method => 'GET',
+    description => 'Governors supported by every CPU policy on every cluster node',
+    permissions => { check => ['perm', '/', ['Sys.Audit']] },
+    parameters => { additionalProperties => 0, properties => {} },
+    returns => { type => 'object', additionalProperties => 1 },
+    code => sub { return cluster_capabilities(); },
+});
 
 __PACKAGE__->register_method({
     name => 'index', path => '', method => 'GET',
@@ -47,6 +61,10 @@ __PACKAGE__->register_method({
         my ($param) = @_;
         PVE::Cluster::check_cfs_quorum();
         my $digest = delete $param->{digest};
+        if ($param->{enabled}) {
+            my $collector = PVE::DC::PowerSave::ClusterCapabilities->new;
+            $collector->validate_config($param, $collector->collect);
+        }
         my $cfg;
         PVE::Cluster::cfs_lock_file('datacenter.cfg', undef, sub {
             $cfg = eval { PVE::DC::PowerSave::Config->load() }

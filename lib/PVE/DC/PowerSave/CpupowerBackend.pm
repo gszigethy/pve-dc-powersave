@@ -33,7 +33,9 @@ sub discover {
     for my $path (@paths) {
         my ($available, $current, $driver, $cpus) = map { _read("$path/$_") } qw(scaling_available_governors scaling_governor scaling_driver related_cpus);
         return { valid => 0, error => "unreadable policy $path", governors => {} } if !defined $available || !defined $current || !defined $driver || !defined $cpus;
-        my %supported = map { $_ => 1 } split(/\s+/, $available); $governors{$_} = 1 for keys %supported;
+        my %supported = map { $_ => 1 } grep { length($_) } split(/\s+/, $available);
+        if (!@policies) { %governors = %supported; }
+        else { delete $governors{$_} for grep { !$supported{$_} } keys %governors; }
         push @policies, { path => $path, current => $current, driver => $driver, cpus => $cpus, governors => \%supported };
     }
     $version ||= $version_error;
