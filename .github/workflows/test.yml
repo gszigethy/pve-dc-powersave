@@ -8,17 +8,8 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    env:
-      QUALITY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - name: Normalize comparison base
-        run: |
-          if [ -z "$QUALITY_BASE" ] || ! git cat-file -e "$QUALITY_BASE^{commit}" 2>/dev/null; then
-            echo "QUALITY_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          fi
       - name: Install native analyzers
         run: sudo apt-get update && sudo apt-get install -y libperl-critic-perl shellcheck
       - name: Perl tests
@@ -36,14 +27,15 @@ jobs:
         run: python3 -m py_compile scripts/integrate-pve.py
       - name: Validate systemd unit in isolated CI root
         run: |
-          mkdir -p /tmp/unit-root/usr/sbin /tmp/unit-root/etc/systemd/system
-          install -m 755 bin/pve-dc-powersave /tmp/unit-root/usr/sbin/pve-dc-powersave
-          cp systemd/*.service /tmp/unit-root/etc/systemd/system/
+          UNIT_ROOT=$(mktemp -d "$RUNNER_TEMP/pve-unit.XXXXXX")
+          trap 'rm -rf "$UNIT_ROOT"' EXIT
+          mkdir -p "$UNIT_ROOT/usr/sbin" "$UNIT_ROOT/etc/systemd/system"
+          install -m 755 bin/pve-dc-powersave "$UNIT_ROOT/usr/sbin/pve-dc-powersave"
+          cp systemd/*.service "$UNIT_ROOT/etc/systemd/system/"
           for unit in pve-cluster pvedaemon; do
-            printf '[Service]\nExecStart=/usr/sbin/pve-dc-powersave\n' > "/tmp/unit-root/etc/systemd/system/$unit.service"
+            printf '[Service]\nExecStart=/usr/sbin/pve-dc-powersave\n' > "$UNIT_ROOT/etc/systemd/system/$unit.service"
           done
           for target in sysinit basic shutdown; do
-            printf '[Unit]\nDescription=CI target\n' > "/tmp/unit-root/etc/systemd/system/$target.target"
+            printf '[Unit]\nDescription=CI target\n' > "$UNIT_ROOT/etc/systemd/system/$target.target"
           done
-          systemd-analyze verify --root=/tmp/unit-root /etc/systemd/system/pve-dc-powersave.service
-
+          systemd-analyze verify --root="$UNIT_ROOT" /etc/systemd/system/pve-dc-powersave.service
