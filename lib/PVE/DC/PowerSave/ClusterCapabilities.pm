@@ -23,7 +23,7 @@ sub _json {
         alarm 15;
         my $err = gensym;
         $pid = open3(undef, my $out, $err, $self->{pvesh}, 'get', $path, '--output-format', 'json');
-        local $/;
+        local $/ = undef;
         $stdout = <$out> // '';
         $stderr = <$err> // '';
         waitpid($pid, 0);
@@ -43,14 +43,14 @@ sub _json {
 
 sub _local_common {
     my ($policies) = @_;
-    return undef if ref($policies) ne 'ARRAY' || !@$policies;
+    return if ref($policies) ne 'ARRAY' || !@$policies;
     my $first = $policies->[0]->{governors};
-    return undef if ref($first) ne 'HASH';
+    return if ref($first) ne 'HASH';
     my %common = map { $_ => 1 } grep { $first->{$_} } keys %$first;
     for (my $index = 1; $index < @$policies; $index++) {
         my $policy = $policies->[$index];
         my $supported = $policy->{governors};
-        return undef if ref($supported) ne 'HASH';
+        return if ref($supported) ne 'HASH';
         delete $common{$_} for grep { !$supported->{$_} } keys %common;
     }
     return [sort keys %common];

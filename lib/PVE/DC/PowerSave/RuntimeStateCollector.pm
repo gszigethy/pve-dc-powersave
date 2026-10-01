@@ -100,7 +100,7 @@ sub _json {
         alarm 10;
         my $err = gensym;
         $pid = open3(undef, my $out, $err, $self->{pvesh}, @args, '--output-format', 'json');
-        local $/;
+        local $/ = undef;
         $stdout = <$out> // '';
         $stderr = <$err> // '';
         waitpid($pid, 0); $pid = undef;

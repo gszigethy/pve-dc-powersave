@@ -20,7 +20,7 @@ __PACKAGE__->register_method({
         my $path = '/run/pve-dc-powersave/status.json';
         return { node => $param->{node}, state => 'ERROR', reason => 'service_not_reporting' } if !-r $path;
         open(my $fh, '<', $path) or die "cannot read status: $!\n";
-        local $/; my $raw = <$fh>; close($fh);
+        local $/ = undef; my $raw = <$fh>; close($fh);
         my $status = decode_json($raw);
         my $age = time - ($status->{last_reconciliation} || 0);
         my $stale_after = 2 * ($status->{reconciliation_interval} || 30) + 15;
@@ -46,7 +46,7 @@ __PACKAGE__->register_method({
         open(my $fh, '>', $path) or die "cannot request reconciliation: $!\n";
         print {$fh} time . ":$$\n";
         close($fh);
-        return undef;
+        return;
     },
 });
 1;

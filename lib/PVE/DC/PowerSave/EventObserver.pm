@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use JSON::PP;
 
-sub new { bless { collector => $_[1] }, $_[0] }
+sub new { return bless { collector => $_[1] }, $_[0] }
 
 sub fingerprint {
     my ($self) = @_;
