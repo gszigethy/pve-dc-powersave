@@ -1,0 +1,6 @@
+# Apply every core policy associated with preventing bugs or security issues.
+# Broad Perl Best Practices style rules are intentionally outside this gate;
+# formatting and naming changes should be reviewed separately from correctness.
+severity = 1
+theme = bugs || security
+verbose = %f:%l:%c: %m (%p, severity %s)\n

@@ -18,9 +18,8 @@ jobs:
         run: |
           find lib/PVE/DC -name '*.pm' -print0 | xargs -0 -n1 perl -Ilib -c
           perl -Ilib -c bin/pve-dc-powersave
-      - name: Perl::Critic severity 1 diagnostics (initial baseline report)
-        continue-on-error: true
-        run: perlcritic --severity 1 lib bin/pve-dc-powersave
+      - name: Perl correctness and security analysis
+        run: perlcritic --profile .perlcriticrc lib bin/pve-dc-powersave
       - name: ShellCheck
         run: shellcheck scripts/install.sh
       - name: Python syntax
