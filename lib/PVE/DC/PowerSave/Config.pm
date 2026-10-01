@@ -16,9 +16,12 @@ my %DEFAULT = (
 );
 my @KEYS = qw(enabled active_governor idle_governor migration_governor failsafe_governor reconciliation_interval event_poll_interval idle_candidate_delay boot_protection_period);
 
-sub path { '/etc/pve/dc-powersave.cfg' }
+sub path { return '/etc/pve/dc-powersave.cfg' }
 sub defaults { return { %DEFAULT } }
+## no critic (Subroutines::ProhibitBuiltinHomonyms)
+# Public API retained for compatibility with callers that use Config->keys.
 sub keys { return @KEYS }
+## use critic
 
 sub parse {
     my ($class, $raw) = @_;
@@ -45,8 +48,10 @@ sub validate {
     for my $key (qw(reconciliation_interval event_poll_interval idle_candidate_delay boot_protection_period)) {
         $cfg->{$key} =~ /^\d+$/ or die "invalid $key\n";
     }
-    $cfg->{reconciliation_interval} >= 5 && $cfg->{reconciliation_interval} <= 3600 or die "reconciliation_interval must be 5..3600\n";
-    $cfg->{event_poll_interval} >= 1 && $cfg->{event_poll_interval} <= 60 or die "event_poll_interval must be 1..60\n";
+    ($cfg->{reconciliation_interval} >= 5 && $cfg->{reconciliation_interval} <= 3600)
+        or die "reconciliation_interval must be 5..3600\n";
+    ($cfg->{event_poll_interval} >= 1 && $cfg->{event_poll_interval} <= 60)
+        or die "event_poll_interval must be 1..60\n";
     $cfg->{idle_candidate_delay} <= 3600 or die "idle_candidate_delay must be 0..3600\n";
     $cfg->{boot_protection_period} <= 86400 or die "boot_protection_period must be 0..86400\n";
     return $cfg;
@@ -57,7 +62,7 @@ sub load {
     $path //= path();
     return $class->defaults if !-e $path;
     open(my $fh, '<', $path) or die "cannot read $path: $!\n";
-    local $/;
+    local $/ = undef;
     my $raw = <$fh>;
     close($fh);
     return $class->parse($raw);
@@ -68,7 +73,7 @@ sub digest {
     $path //= path();
     return sha256_hex('') if !-e $path;
     open(my $fh, '<', $path) or die "cannot read $path: $!\n";
-    local $/;
+    local $/ = undef;
     my $raw = <$fh>;
     close($fh);
     return sha256_hex($raw);
@@ -78,7 +83,7 @@ sub save {
     my ($class, $cfg, $path, $expected_digest) = @_;
     $path //= path();
     $class->validate($cfg);
-    defined($expected_digest) && $expected_digest eq $class->digest($path)
+    (defined($expected_digest) && $expected_digest eq $class->digest($path))
         or die "configuration changed; reload before saving\n";
     my $raw = join('', map { "$_: $cfg->{$_}\n" } @KEYS);
     open(my $fh, '>', $path) or die "cannot write $path: $!\n";

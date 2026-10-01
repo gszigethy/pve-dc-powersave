@@ -10,7 +10,7 @@ use PVE::DC::PowerSave::DesiredState;
 
 sub _read_line {
     my ($path) = @_;
-    open(my $fh, '<', $path) or return undef;
+    open(my $fh, '<', $path) or return;
     my $line = <$fh>; close($fh);
     chomp($line) if defined($line);
     return $line;
@@ -36,6 +36,7 @@ sub _publish {
     print {$fh} encode_json($status);
     close($fh) or die "cannot close status: $!\n";
     rename($tmp, $path) or die "cannot publish status: $!\n";
+    return;
 }
 
 sub _log_change {
@@ -49,6 +50,7 @@ sub _log_change {
             .($status->{last_error} ? " error=$status->{last_error}" : '')."\n";
     }
     $self->{previous} = $status;
+    return;
 }
 
 sub reconcile {
@@ -157,7 +159,9 @@ sub reconcile {
     my $actual = $self->{backend}->discover;
     $status->{actual_governors} = [map { $_->{current} } @{$actual->{policies} || []}];
     $status->{prerequisites}->{cpu_policies} = [map {
-        { %$_, requested_governor => $status->{desired_governor} }
+        my %policy = %$_;
+        $policy{requested_governor} = $status->{desired_governor};
+        \%policy;
     } @{$actual->{policies} || []}];
     $self->_publish($status); $self->_log_change($status);
     close($lock); return $status;
@@ -177,10 +181,12 @@ sub run {
             && time - $self->{idle_seen_at} >= $cfg->{idle_candidate_delay};
         if ($fingerprint ne $last_fingerprint || $digest ne $last_digest || $request ne $last_request || $candidate_due
             || time - $last_reconcile >= $cfg->{reconciliation_interval}) {
-            eval { $self->reconcile }; warn "dc-powersave: reconcile failed: $@" if $@;
+            my $reconciled = eval { $self->reconcile; 1 };
+            warn "dc-powersave: reconcile failed: $@" if !$reconciled;
             ($last_reconcile, $last_fingerprint, $last_digest, $last_request) = (time, $fingerprint, $digest, $request);
         }
         sleep($cfg->{event_poll_interval});
     }
+    return;
 }
 1;

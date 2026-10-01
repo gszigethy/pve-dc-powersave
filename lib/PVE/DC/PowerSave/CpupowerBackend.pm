@@ -3,8 +3,8 @@ use strict;
 use warnings;
 use IPC::Open3 qw(open3);
 use Symbol qw(gensym);
-sub new { bless { cpupower => $_[1] || '/usr/bin/cpupower' }, $_[0] }
-sub _read { my ($path) = @_; open(my $fh, '<', $path) or return undef; my $v = <$fh>; close($fh); chomp($v //= ''); return $v; }
+sub new { return bless { cpupower => $_[1] || '/usr/bin/cpupower' }, $_[0] }
+sub _read { my ($path) = @_; open(my $fh, '<', $path) or return; my $v = <$fh>; close($fh); chomp($v //= ''); return $v; }
 sub _run {
     my ($self, @cmd) = @_;
     my ($stdout, $stderr, $status, $pid);
@@ -12,7 +12,7 @@ sub _run {
         local $SIG{ALRM} = sub { die "cpupower timed out\n" };
         alarm 10;
         my $err = gensym;
-        $pid = open3(undef, my $out, $err, @cmd); local $/;
+        $pid = open3(undef, my $out, $err, @cmd); local $/ = undef;
         $stdout = <$out> // ''; $stderr = <$err> // '';
         waitpid($pid, 0); $pid = undef; $status = $?;
         alarm 0; 1;
