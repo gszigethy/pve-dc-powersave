@@ -1,26 +1,41 @@
-# Proxmox powersave CI checks
+# Proxmox PowerSave CI and release checks
 
-The workflow runs on pushes, pull requests and manual requests with read-only
-repository permissions. The checkout Action is pinned to an immutable commit;
-Dependabot checks GitHub Actions for updates weekly.
+The required `quality` job runs on pushes to `main`, pull requests targeting
+`main`, and manual dispatches. Repository permissions are read-only and all
+third-party GitHub Actions are pinned to immutable commits.
 
-Blocking checks:
-- Existing Perl tests (`prove -Ilib t`).
-- Compilation of standalone modules under `lib/PVE/DC` and the daemon.
-- Perl::Critic policies tagged for bug prevention or security.
-- ShellCheck for the installer.
-- Python syntax validation for the Proxmox integration helper.
-- Systemd unit validation inside a temporary CI filesystem.
+## Core Perl validation
 
-The existing API tests provide Proxmox dependency stubs for the API modules.
-The isolated systemd check provides stub Proxmox services and system targets;
-it validates unit syntax and executable paths without starting the daemon or
-changing a Proxmox node.
+Perl remains the authoritative implementation language for the controller and
+API modules. CI therefore uses Perl-native checks rather than relying on
+SonarQube Cloud for unsupported Perl analysis:
 
-`.perlcriticrc` deliberately selects the `bugs || security` themes at severity
-1. This runs every core correctness and security policy while excluding Perl
-Best Practices rules concerned only with layout, naming or personal style. A
-finding now fails CI instead of being hidden behind `continue-on-error`.
+- `prove -Ilib t` under Devel::Cover.
+- Standalone compilation of `lib/PVE/DC/**` and `bin/pve-dc-powersave`.
+- Perl::Critic bug-prevention and security policies from `.perlcriticrc`.
+- A persisted text coverage report as a CI artifact.
 
-These files configure repository validation only. They do not change governor
-selection, workload detection, the daemon or the installed systemd unit.
+## Supporting code validation
+
+- ShellCheck for `scripts/install.sh`.
+- Python behavior tests for the Proxmox integration helper on Python 3.11 and
+  Python 3.13, matching the supported Proxmox VE 8/9 generations.
+- Python coverage exported as `coverage.xml`.
+- JavaScript syntax validation for `web/dc-powersave.js`.
+- Systemd unit validation in an isolated temporary filesystem.
+
+## SonarQube Cloud
+
+SonarQube Cloud CI analysis is enabled for the supported Python and JavaScript
+sources. The Python coverage report is imported into Sonar. JavaScript remains
+statically analyzed but is excluded from coverage until browser-level tests are
+added. Perl quality and coverage stay authoritative in the native CI gate
+because SonarQube Cloud does not provide a Perl analyzer.
+
+## Releases
+
+Pushing a `vX.Y.Z` tag starts a guarded release. The tag must match the first
+semantic-version entry in `CHANGELOG.md`, and the tagged commit must already
+be contained in `main`. The release workflow reruns the native tests and
+validation, then creates a versioned source tarball and `SHA256SUMS` and
+publishes them with generated GitHub release notes.
