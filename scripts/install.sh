@@ -114,8 +114,15 @@ fi
 
 echo "Integrating the Datacenter UI and authenticated PVE API ..."
 python3 /usr/lib/pve-dc-powersave/integrate-pve.py
+# The integration helper only restarts the API daemons when it edits a PVE
+# file. On a reinstall or upgrade the registrations already exist, so reload
+# them here to load the newly installed API modules.
+systemctl reload-or-restart pvedaemon pveproxy
 pvesh get /cluster/power-management --output-format json >/dev/null
-systemctl enable --now "$SERVICE"
+# enable --now does not restart a running service; an upgrade must replace
+# the controller code that is already loaded in memory.
+systemctl enable "$SERVICE"
+systemctl restart "$SERVICE"
 systemctl is-active --quiet "$SERVICE"
 echo
 echo "Installed $PROGRAM on this node. Existing shared policy settings were preserved."
