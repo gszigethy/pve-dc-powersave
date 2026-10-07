@@ -32,7 +32,7 @@ jobs:
           from pathlib import Path
 
           text = Path("CHANGELOG.md").read_text(encoding="utf-8")
-          match = re.search(r"^## \[(\d+\.\d+\.\d+)\]", text, re.MULTILINE)
+          match = re.search(r"^## \[(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\]", text, re.MULTILINE)
           if not match:
               raise SystemExit("No semantic version entry found in CHANGELOG.md")
           print(match.group(1))
@@ -129,4 +129,4 @@ jobs:
           files: |
             pve-dc-powersave-${{ steps.version.outputs.version }}.tar.gz
             SHA256SUMS
-          prerelease: ${{ contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'pre') }}
+          prerelease: ${{ contains(github.ref_name, '-') }}

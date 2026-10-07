@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here.
 
+## [0.2.1-beta.1] - 2026-10-07
+
+### Fixed
+
+- A concurrent read during a policy save could see an empty configuration
+  file and silently report the node as disabled; saves now replace the file
+  atomically.
+- Losing a previously enabled shared configuration now stays an error instead
+  of turning into `DISABLED` after one reconciliation.
+- Rerunning the installer now restarts the controller and reloads the PVE API
+  daemons, so upgrades take effect without a reboot.
+- Overlapping status refreshes in the Power Management UI no longer duplicate
+  node rows; all status columns are HTML-encoded.
+- The design guide now shows the `cpupower` command the backend actually runs.
+
+### Changed
+
+- CI adds Perl coverage, Python helper tests, JavaScript syntax checks,
+  SonarQube Cloud analysis and a guarded tag-based release workflow. Tags with
+  a pre-release suffix are published as GitHub pre-releases.
+
 ## [0.2.0] - 2026-09-24
 
 ### Added

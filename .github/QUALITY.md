@@ -34,7 +34,8 @@ because SonarQube Cloud does not provide a Perl analyzer.
 
 ## Releases
 
-Pushing a `vX.Y.Z` tag starts a guarded release. The tag must match the first
+Pushing a `vX.Y.Z` tag (or a pre-release tag such as `vX.Y.Z-beta.1`) starts a
+guarded release. The tag must match the first
 semantic-version entry in `CHANGELOG.md`, and the tagged commit must already
 be contained in `main`. The release workflow reruns the native tests and
 validation, then creates a versioned source tarball and `SHA256SUMS` and
