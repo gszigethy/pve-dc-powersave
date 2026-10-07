@@ -73,11 +73,11 @@
                 minHeight: 300,
                 store: me.statusStore,
                 columns: [
-                    { text: 'Node', dataIndex: 'node', width: 130 },
-                    { text: 'State', dataIndex: 'state', width: 135 },
+                    { text: 'Node', dataIndex: 'node', width: 130, renderer: Ext.String.htmlEncode },
+                    { text: 'State', dataIndex: 'state', width: 135, renderer: Ext.String.htmlEncode },
                     { text: 'Actual', dataIndex: 'actual_governors', width: 150,
                         renderer: function (v) { return Ext.String.htmlEncode((v || []).join(', ') || 'unknown'); } },
-                    { text: 'Desired', dataIndex: 'desired_governor', width: 140 },
+                    { text: 'Desired', dataIndex: 'desired_governor', width: 140, renderer: Ext.String.htmlEncode },
                     { text: 'VMs', dataIndex: 'running_vm_count', width: 60 },
                     { text: 'CTs', dataIndex: 'running_ct_count', width: 60 },
                     { text: 'Protected', dataIndex: 'protected', width: 85, renderer: function (v) { return v ? 'Yes' : 'No'; } },
@@ -209,8 +209,14 @@
 
         loadStatus: function () {
             var me = this;
+            // Refreshes overlap (timer, buttons, one deferred reload per node
+            // after Reconcile all). Only the newest sweep may write rows, or
+            // late replies from an older sweep duplicate nodes.
+            var generation = me.statusGeneration = (me.statusGeneration || 0) + 1;
+            function current() { return !me.destroyed && generation === me.statusGeneration; }
             request({ url: '/api2/json/cluster/status', method: 'GET',
                 success: function (response) {
+                    if (!current()) { return; }
                     var nodes = Ext.decode(response.responseText).data.filter(function (entry) { return entry.type === 'node'; });
                     me.statusStore.removeAll();
                     nodes.forEach(function (node) {
@@ -219,8 +225,11 @@
                             return;
                         }
                         request({ url: '/api2/json/nodes/' + encodeURIComponent(node.name) + '/power-management', method: 'GET',
-                            success: function (result) { me.statusStore.add(Ext.decode(result.responseText).data); },
+                            success: function (result) {
+                                if (current()) { me.statusStore.add(Ext.decode(result.responseText).data); }
+                            },
                             failure: function (result) {
+                                if (!current()) { return; }
                                 me.statusStore.add({ node: node.name, state: 'ERROR',
                                     reason: result.status === 404 ? 'plugin_not_installed' : 'status_unavailable',
                                     last_error: result.statusText });
