@@ -141,7 +141,7 @@ backend discovers each `/sys/devices/system/cpu/cpufreq/policy*` policy, its
 driver, available governors, and current governor.
 
 A requested governor is applied only when every relevant policy supports it.
-The backend invokes `cpupower frequency-set -r -g <governor>` and then reads all
+The backend invokes `cpupower -c all frequency-set -g <governor>` and then reads all
 policies back. Command success alone does not count as a successful transition.
 
 If the idle governor is missing on even one policy, the node remains active.
