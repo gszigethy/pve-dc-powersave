@@ -13,14 +13,14 @@ SonarQube Cloud for unsupported Perl analysis:
 - `prove -Ilib t` under Devel::Cover.
 - Standalone compilation of `lib/PVE/DC/**` and `bin/pve-dc-powersave`.
 - Perl::Critic bug-prevention and security policies from `.perlcriticrc`.
-- A persisted text coverage report as a CI artifact.
+- A persisted text coverage report as a CI artifact. Statement coverage must remain at or above 80% (current measurement: 85.0%).
 
 ## Supporting code validation
 
 - ShellCheck for `scripts/install.sh`.
 - Python behavior tests for the Proxmox integration helper on Python 3.11 and
   Python 3.13, matching the supported Proxmox VE 8/9 generations.
-- Python coverage exported as `coverage.xml`.
+- Python coverage exported as `coverage.xml`, with a 45% floor for the root-only integration helper (current measurement: 49%).
 - JavaScript syntax validation for `web/dc-powersave.js`.
 - Systemd unit validation in an isolated temporary filesystem.
 
