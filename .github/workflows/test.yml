@@ -1,29 +1,90 @@
-name: Native quality checks
+name: CI
+
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
+    name: quality
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Install native analyzers
-        run: sudo apt-get update && sudo apt-get install -y libperl-critic-perl shellcheck
-      - name: Perl tests
-        run: prove -Ilib t
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Perl and shell analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdevel-cover-perl libperl-critic-perl shellcheck
+
+      - name: Perl tests with coverage
+        run: |
+          rm -rf cover_db
+          HARNESS_PERL_SWITCHES=-MDevel::Cover prove -Ilib t
+          cover -report text | tee perl-coverage.txt
+
       - name: Compile standalone Perl modules and daemon
         run: |
           find lib/PVE/DC -name '*.pm' -print0 | xargs -0 -n1 perl -Ilib -c
           perl -Ilib -c bin/pve-dc-powersave
+
       - name: Perl correctness and security analysis
         run: perlcritic --profile .perlcriticrc lib bin/pve-dc-powersave
+
       - name: ShellCheck
         run: shellcheck scripts/install.sh
-      - name: Python syntax
-        run: python3 -m py_compile scripts/integrate-pve.py
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements_ci.txt
+
+      - name: Install Python CI dependency
+        run: python -m pip install -r requirements_ci.txt
+
+      - name: Python tests with coverage
+        run: |
+          python -m coverage erase
+          python -m coverage run --branch --source=scripts -m unittest discover -s pytests -v
+          python -m coverage report --show-missing --fail-under=55
+          python -m coverage xml -o coverage.xml
+
+      - name: Python 3.11 syntax
+        run: python -m py_compile scripts/integrate-pve.py pytests/test_integrate_pve.py
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+
+      - name: Python 3.13 compatibility tests
+        run: python -m unittest discover -s pytests -v
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+
+      - name: JavaScript syntax
+        run: node --check web/dc-powersave.js
+
       - name: Validate systemd unit in isolated CI root
         run: |
           UNIT_ROOT=$(mktemp -d "$RUNNER_TEMP/pve-unit.XXXXXX")
@@ -38,3 +99,17 @@ jobs:
             printf '[Unit]\nDescription=CI target\n' > "$UNIT_ROOT/etc/systemd/system/$target.target"
           done
           systemd-analyze verify --root="$UNIT_ROOT" /etc/systemd/system/pve-dc-powersave.service
+
+      - name: SonarQube Cloud analysis
+        if: env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.xml
+            perl-coverage.txt
+          if-no-files-found: ignore
