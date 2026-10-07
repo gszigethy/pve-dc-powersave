@@ -21,7 +21,7 @@ sub new {
     return bless {
         config_path => $args{config_path}, collector => $args{collector},
         backend => $args{backend}, observer => $args{observer}, started => time, idle_seen_at => undef,
-        previous => {}, verbose => $args{verbose}, status_path => $args{status_path} || '/run/pve-dc-powersave/status.json',
+        previous => {}, managed => 0, verbose => $args{verbose}, status_path => $args{status_path} || '/run/pve-dc-powersave/status.json',
         lock_path => $args{lock_path} || '/run/lock/pve-dc-powersave.lock',
     }, $class;
 }
@@ -61,7 +61,14 @@ sub reconcile {
     my $cfg = eval { PVE::DC::PowerSave::Config->load($self->{config_path}) };
     my $config_error = $@;
     my $config_path = $self->{config_path} // PVE::DC::PowerSave::Config::path();
-    $config_error ||= 'shared configuration disappeared' if !-e $config_path && $self->{previous}->{enabled};
+    # Remember whether the last readable shared configuration enabled
+    # management. A later missing file (deleted, or pmxcfs unavailable) must
+    # stay an error rather than decay into the unmanaged defaults.
+    if (!-e $config_path) {
+        $config_error ||= 'shared configuration disappeared' if $self->{managed};
+    } elsif ($cfg) {
+        $self->{managed} = $cfg->{enabled} ? 1 : 0;
+    }
     $cfg ||= PVE::DC::PowerSave::Config->defaults;
     my $cap = $self->{backend}->discover;
     my $runtime = $self->{collector}->collect($now - $self->{started} < $cfg->{boot_protection_period});

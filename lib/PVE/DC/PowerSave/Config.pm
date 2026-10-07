@@ -86,9 +86,22 @@ sub save {
     (defined($expected_digest) && $expected_digest eq $class->digest($path))
         or die "configuration changed; reload before saving\n";
     my $raw = join('', map { "$_: $cfg->{$_}\n" } @KEYS);
-    open(my $fh, '>', $path) or die "cannot write $path: $!\n";
-    print {$fh} $raw or die "cannot write $path: $!\n";
-    close($fh) or die "cannot close $path: $!\n";
+    # Replace the file in one step. Truncating in place lets a concurrent
+    # reader on any node see an empty file, which parses as the disabled
+    # defaults. pmxcfs supports rename within /etc/pve for this purpose.
+    my $tmp = "$path.tmp.$$";
+    my $written = eval {
+        open(my $fh, '>', $tmp) or die "cannot write $tmp: $!\n";
+        print {$fh} $raw or die "cannot write $tmp: $!\n";
+        close($fh) or die "cannot close $tmp: $!\n";
+        rename($tmp, $path) or die "cannot replace $path: $!\n";
+        1;
+    };
+    if (!$written) {
+        my $error = $@;
+        unlink($tmp);
+        die $error;
+    }
     return $class->digest($path);
 }
 1;
