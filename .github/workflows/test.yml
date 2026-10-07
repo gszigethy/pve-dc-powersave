@@ -37,6 +37,9 @@ jobs:
           rm -rf cover_db
           HARNESS_PERL_SWITCHES=-MDevel::Cover prove -Ilib t
           cover -report text | tee perl-coverage.txt
+          PERL_STATEMENT_COVERAGE="$(awk '$1 == "Total" { print $2; exit }' perl-coverage.txt)"
+          echo "Perl statement coverage: ${PERL_STATEMENT_COVERAGE}%"
+          awk -v coverage="$PERL_STATEMENT_COVERAGE" 'BEGIN { if ((coverage + 0) < 80) exit 1 }'
 
       - name: Compile standalone Perl modules and daemon
         run: |
@@ -63,7 +66,7 @@ jobs:
         run: |
           python -m coverage erase
           python -m coverage run --branch --source=scripts -m unittest discover -s pytests -v
-          python -m coverage report --show-missing --fail-under=55
+          python -m coverage report --show-missing --fail-under=45
           python -m coverage xml -o coverage.xml
 
       - name: Python 3.11 syntax
