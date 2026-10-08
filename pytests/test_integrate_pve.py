@@ -125,7 +125,7 @@ __PACKAGE__->register_method({
             calls = []
 
             def run(cmd, check):
-                calls.append(cmd)
+                calls.append((cmd, check))
 
             with patch.object(integrate_pve.os, "geteuid", return_value=0), \
                     patch.object(integrate_pve, "perl_module_path", side_effect=lambda name: files[name][0]), \
@@ -135,17 +135,17 @@ __PACKAGE__->register_method({
                 integrate_pve.main([])
                 self.assertIn("# BEGIN pve-dc-powersave", files["PVE::API2::Cluster"][0].read_text())
                 self.assertIn("/pve2/js/dc-powersave.js", index.read_text())
-                self.assertIn(["systemctl", "restart", "pvedaemon", "pveproxy"], calls)
+                self.assertIn((["systemctl", "restart", "pvedaemon", "pveproxy"], True), calls)
 
                 calls.clear()
                 integrate_pve.main([])
-                self.assertNotIn(["systemctl", "restart", "pvedaemon", "pveproxy"], calls)
+                self.assertNotIn((["systemctl", "restart", "pvedaemon", "pveproxy"], True), calls)
 
                 integrate_pve.main(["--remove"])
                 for path, text in files.values():
                     self.assertEqual(path.read_text(), text)
                 self.assertEqual(index.read_text(), index_text)
-                self.assertIn(["systemctl", "restart", "pvedaemon", "pveproxy"], calls)
+                self.assertIn((["systemctl", "restart", "pvedaemon", "pveproxy"], True), calls)
 
     def test_main_requires_root(self) -> None:
         with patch.object(integrate_pve.os, "geteuid", return_value=1000):
