@@ -2,6 +2,63 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.0-beta.1] - 2026-10-08
+
+### Added
+
+- `scripts/uninstall.sh` (installed as `/usr/lib/pve-dc-powersave/uninstall.sh`)
+  and `integrate-pve.py --remove` take the plugin off a node: they stop the
+  service, optionally set a governor on every CPU policy (`--governor`),
+  remove the PVE API and web registrations before the files they load, and
+  optionally delete the shared configuration (`--purge-config`).
+- `pve-dc-powersave --once` now exits 1 when the running service holds the
+  lock, and 2 when the node ends in `ERROR`.
+- `docs/REVIEW-2026-10.md`: data flow, findings, security and performance
+  review, and open proposals.
+
+### Security
+
+- The controller lock moved from world-writable `/run/lock` to
+  `/run/pve-dc-powersave`. Any local user could previously hold the old lock
+  and silently stop every reconciliation. The controller now refuses a lock
+  directory it does not own or that others can write, and does not follow
+  symlinks.
+- The installer no longer mistakes the parent of the current directory for a
+  source checkout when piped into `bash`, so `curl ... | bash` always
+  downloads the requested ref.
+
+### Fixed
+
+- The cluster capabilities endpoint now runs in `pvedaemon`. In `pveproxy` it
+  ran as `www-data`, where `pvesh` cannot run, so the UI could not discover
+  governors or enable the policy.
+- Backups, restores, clones, disk moves and any other task running on a node
+  now keep it out of idle. Only interactive console sessions are ignored.
+- CPUs that are offline no longer leave the node in `ERROR` or remove every
+  governor from the cluster-wide common set.
+- A command that writes a lot to stderr no longer blocks until it times out.
+  All `pvesh` and `cpupower` calls share one runner that reads both pipes.
+- When a governor is unavailable, the status shows the failsafe governor that
+  was requested, and the error names both unavailable governors.
+- A failed status write no longer leaves a temporary file behind.
+- A node whose service is stopped is reported as such instead of as missing
+  `cpupower`.
+- The Power Management page no longer re-runs cluster capability discovery
+  every 15 seconds, keeps the loaded governors when policy and capabilities
+  arrive in either order, accepts whole numbers only in the interval fields,
+  and lists nodes in a stable order.
+- `integrate-pve.py` restarts the API daemons only when it changed a file.
+
+### Changed
+
+- The task wake-up poll reads the cluster task list in process through
+  `PVE::Cluster` and falls back to `pvesh`, avoiding about 43,000 process
+  starts per node per day. A node that stays idle no longer collects its
+  runtime state twice per reconciliation.
+- CI uses `actions/setup-node` 7.0.0 and shellchecks `scripts/uninstall.sh`.
+- Perl test count grew from 66 to 141, with the CPU backend and the
+  subprocess runner now covered.
+
 ## [0.2.1-beta.1] - 2026-10-07
 
 ### Fixed
