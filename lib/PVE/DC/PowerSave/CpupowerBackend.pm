@@ -1,43 +1,38 @@
 package PVE::DC::PowerSave::CpupowerBackend;
 use strict;
 use warnings;
-use IPC::Open3 qw(open3);
-use Symbol qw(gensym);
+use Errno qw(EBUSY);
+use PVE::DC::PowerSave::Command;
 sub new { return bless { cpupower => $_[1] || '/usr/bin/cpupower' }, $_[0] }
-sub _read { my ($path) = @_; open(my $fh, '<', $path) or return; my $v = <$fh>; close($fh); chomp($v //= ''); return $v; }
-sub _run {
-    my ($self, @cmd) = @_;
-    my ($stdout, $stderr, $status, $pid);
-    my $ok = eval {
-        local $SIG{ALRM} = sub { die "cpupower timed out\n" };
-        alarm 10;
-        my $err = gensym;
-        $pid = open3(undef, my $out, $err, @cmd); local $/ = undef;
-        $stdout = <$out> // ''; $stderr = <$err> // '';
-        waitpid($pid, 0); $pid = undef; $status = $?;
-        alarm 0; 1;
-    };
-    alarm 0;
-    if (!$ok && $pid) { kill 'TERM', $pid; waitpid($pid, 0); }
-    return (0, '', $@ || 'cpupower failed') if !$ok;
-    return ($status == 0, $stdout, $stderr);
-}
+sub _run { my ($self, @cmd) = @_; return PVE::DC::PowerSave::Command::run(\@cmd, 10, 'cpupower'); }
 sub discover {
     my ($self) = @_;
     return { valid => 0, error => 'cpupower executable missing', governors => {} } if !-x $self->{cpupower};
     my ($functional, $version, $version_error) = $self->_run($self->{cpupower}, '--version');
     return { valid => 0, error => "cpupower is not functional: $version_error", governors => {} } if !$functional;
-    my @paths = glob('/sys/devices/system/cpu/cpufreq/policy*');
+    my $sysfs = $self->{sysfs} // '/sys/devices/system/cpu/cpufreq';
+    my @paths = glob("$sysfs/policy*");
     return { valid => 0, error => 'no CPU frequency policies', governors => {} } if !@paths;
     my (%governors, @policies);
     for my $path (@paths) {
-        my ($available, $current, $driver, $cpus) = map { _read("$path/$_") } qw(scaling_available_governors scaling_governor scaling_driver related_cpus);
-        return { valid => 0, error => "unreadable policy $path", governors => {} } if !defined $available || !defined $current || !defined $driver || !defined $cpus;
+        my (@values, $busy);
+        for my $name (qw(scaling_available_governors scaling_governor scaling_driver related_cpus)) {
+            my ($value, $errno) = $self->_read_attr("$path/$name");
+            push @values, $value;
+            $busy++ if $errno == EBUSY;
+        }
+        # cpufreq keeps the policy directory of offline CPUs but answers EBUSY
+        # for every attribute. Such a policy has no CPU to manage, and
+        # cpupower -c all skips offline CPUs as well.
+        next if ($busy // 0) == @values;
+        my ($available, $current, $driver, $cpus) = @values;
+        return { valid => 0, error => "unreadable policy $path", governors => {} } if grep { !defined } @values;
         my %supported = map { $_ => 1 } grep { length($_) } split(/\s+/, $available);
         if (!@policies) { %governors = %supported; }
         else { delete $governors{$_} for grep { !$supported{$_} } keys %governors; }
         push @policies, { path => $path, current => $current, driver => $driver, cpus => $cpus, governors => \%supported };
     }
+    return { valid => 0, error => 'no active CPU frequency policies', governors => {} } if !@policies;
     $version ||= $version_error;
     chomp($version);
     return { valid => 1, cpupower_version => $version, governors => \%governors, policies => \@policies };
@@ -50,5 +45,15 @@ sub verify_governor {
     return (0, "governor $governor unavailable on a policy") if !$self->supports_all($cap, $governor);
     return (0, 'governor readback mismatch') if grep { $_->{current} ne $governor } @{$cap->{policies}};
     return (1, undef);
+}
+sub _read_attr {
+    my ($self, $path) = @_;
+    open(my $fh, '<', $path) or return (undef, $! + 0);
+    my $bytes = sysread($fh, my $value, 4096);
+    my $errno = $! + 0;
+    close($fh);
+    return (undef, $errno) if !defined $bytes;
+    chomp($value);
+    return ($value, 0);
 }
 1;

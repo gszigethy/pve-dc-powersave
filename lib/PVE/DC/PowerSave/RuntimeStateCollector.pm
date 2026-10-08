@@ -3,8 +3,7 @@ use strict;
 use warnings;
 use JSON::PP qw(decode_json);
 use Sys::Hostname qw(hostname);
-use IPC::Open3 qw(open3);
-use Symbol qw(gensym);
+use PVE::DC::PowerSave::Command;
 
 # Long-lived interactive sessions that do not represent host work.
 my %CONSOLE_TASK = map { $_ => 1 } qw(vncproxy vncshell spiceproxy spiceshell termproxy);
@@ -106,24 +105,9 @@ sub collect {
 
 sub _json {
     my ($self, @args) = @_;
-    my ($stdout, $stderr, $status, $pid);
-    my $ok = eval {
-        local $SIG{ALRM} = sub { die "pvesh timed out\n" };
-        alarm 10;
-        my $err = gensym;
-        $pid = open3(undef, my $out, $err, $self->{pvesh}, @args, '--output-format', 'json');
-        local $/ = undef;
-        $stdout = <$out> // '';
-        $stderr = <$err> // '';
-        waitpid($pid, 0); $pid = undef;
-        $status = $?;
-        alarm 0;
-        1;
-    };
-    alarm 0;
-    if (!$ok && $pid) { kill 'TERM', $pid; waitpid($pid, 0); }
-    return (0, undef, $@ || 'pvesh execution failed') if !$ok;
-    return (0, undef, $stderr || 'pvesh failed') if $status != 0;
+    my ($ok, $stdout, $stderr) = PVE::DC::PowerSave::Command::run(
+        [$self->{pvesh}, @args, '--output-format', 'json'], 10, 'pvesh');
+    return (0, undef, $stderr || 'pvesh failed') if !$ok;
     my $data = eval { decode_json($stdout) };
     return (0, undef, "invalid pvesh JSON: $@") if $@;
     return (1, $data, undef);
