@@ -85,6 +85,9 @@ pve-dc-powersave --once --verbose
 journalctl -u pve-dc-powersave.service -n 50 --no-pager
 ```
 
+`--once` exits with status 2 when the node ends in `ERROR`, and with status 1
+without reconciling when the service is reconciling at that moment.
+
 ## Proxmox upgrades and removal
 
 Proxmox does not expose a general third-party UI/API plugin loader for this

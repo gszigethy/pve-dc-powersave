@@ -18,5 +18,14 @@ my $collector = PVE::DC::PowerSave::RuntimeStateCollector->new;
 my $controller = PVE::DC::PowerSave::Controller->new(config_path => $config, verbose => $verbose,
     collector => $collector, observer => PVE::DC::PowerSave::EventObserver->new($collector),
     backend => PVE::DC::PowerSave::CpupowerBackend->new);
-$controller->reconcile if $once;
-$controller->run if !$once;
+if ($once) {
+    my $status = $controller->reconcile;
+    # The service holds the lock only while it reconciles; say so instead of
+    # exiting silently as if the run had happened.
+    if (!$status) {
+        print STDERR "another reconciliation is in progress; try again\n";
+        exit 1;
+    }
+    exit(($status->{state} // '') eq 'ERROR' ? 2 : 0);
+}
+$controller->run;

@@ -62,6 +62,12 @@ is_deeply($cap->{common_governors}, [], 'partial node data is not presented as a
 eval { $collector->validate_config($cfg, $cap) };
 like($@, qr/every node reports fresh/, 'enabled configuration is rejected for incomplete capabilities');
 
+$fixtures->{'/cluster/status'}[2]{online} = 1;
+$fixtures->{'/nodes/pve02/power-management'} = { node => 'pve02', state => 'ERROR', reason => 'service_not_reporting' };
+$cap = $collector->collect;
+is($cap->{nodes}[1]{reason}, 'service_not_reporting', 'stopped service is not reported as missing cpupower');
+like($cap->{errors}[0]{message}, qr/service is not running/, 'stopped service message names the service');
+
 $fixtures->{'/cluster/status'} = [ { type => 'node', name => 'pve01', online => 1 } ];
 $cap = $collector->collect;
 ok($cap->{complete}, 'standalone node does not require a cluster quorum row');

@@ -102,6 +102,11 @@ sub collect {
             push @{$result->{errors}}, { node => $node, reason => $entry->{reason}, message => $status_error || 'Invalid node status' };
             next;
         }
+        if (($status->{reason} // '') eq 'service_not_reporting') {
+            $entry->{reason} = 'service_not_reporting';
+            push @{$result->{errors}}, { node => $node, reason => $entry->{reason}, message => 'pve-dc-powersave.service is not running on this node' };
+            next;
+        }
         if (($status->{reason} // '') eq 'service_status_stale') {
             $entry->{reason} = 'service_status_stale';
             push @{$result->{errors}}, { node => $node, reason => $entry->{reason}, message => $status->{last_error} || 'Node status is stale' };
