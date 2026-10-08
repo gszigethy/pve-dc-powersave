@@ -46,10 +46,10 @@
                     governorField('idle_governor', 'Idle governor'),
                     governorField('migration_governor', 'Migration governor'),
                     governorField('failsafe_governor', 'Failsafe governor'),
-                    { xtype: 'numberfield', name: 'reconciliation_interval', fieldLabel: 'Safety reconciliation (s)', minValue: 5, maxValue: 3600 },
-                    { xtype: 'numberfield', name: 'event_poll_interval', fieldLabel: 'Task poll (s)', minValue: 1, maxValue: 60 },
-                    { xtype: 'numberfield', name: 'idle_candidate_delay', fieldLabel: 'Idle candidate delay (s)', minValue: 0, maxValue: 3600 },
-                    { xtype: 'numberfield', name: 'boot_protection_period', fieldLabel: 'Boot protection (s)', minValue: 0, maxValue: 86400 },
+                    { xtype: 'numberfield', name: 'reconciliation_interval', allowDecimals: false, fieldLabel: 'Safety reconciliation (s)', minValue: 5, maxValue: 3600 },
+                    { xtype: 'numberfield', name: 'event_poll_interval', allowDecimals: false, fieldLabel: 'Task poll (s)', minValue: 1, maxValue: 60 },
+                    { xtype: 'numberfield', name: 'idle_candidate_delay', allowDecimals: false, fieldLabel: 'Idle candidate delay (s)', minValue: 0, maxValue: 3600 },
+                    { xtype: 'numberfield', name: 'boot_protection_period', allowDecimals: false, fieldLabel: 'Boot protection (s)', minValue: 0, maxValue: 86400 },
                 ],
                 buttons: [
                     { text: 'Reload policy', handler: function () { me.loadConfig(); } },
@@ -66,6 +66,7 @@
             me.statusStore = Ext.create('Ext.data.Store', {
                 fields: ['node', 'state', 'actual_governors', 'desired_governor', 'running_vm_count',
                     'running_ct_count', 'protected', 'reason', 'last_error', 'prerequisites'],
+                sorters: ['node'],
             });
             me.statusGrid = Ext.create('Ext.grid.Panel', {
                 title: 'Node status',
@@ -85,7 +86,7 @@
                     { text: 'Last error', dataIndex: 'last_error', flex: 1, renderer: Ext.String.htmlEncode },
                 ],
                 tbar: [
-                    { text: 'Refresh', iconCls: 'fa fa-refresh', handler: function () { me.loadStatus(); } },
+                    { text: 'Refresh', iconCls: 'fa fa-refresh', handler: function () { me.loadCapabilities(); me.loadStatus(); } },
                     { text: 'Reconcile selected', handler: function () { me.reconcileSelected(); } },
                     { text: 'Reconcile all', handler: function () { me.reconcileAll(); } },
                     '->', { xtype: 'tbtext', text: 'Double click a node for prerequisites and CPU policies' },
@@ -93,7 +94,7 @@
                 listeners: {
                     itemdblclick: function (grid, record) {
                         var details = Ext.JSON.encode(record.getData());
-                        Ext.Msg.alert(record.get('node'), '<pre style="white-space:pre-wrap;max-height:450px;overflow:auto">'
+                        Ext.Msg.alert(Ext.String.htmlEncode(record.get('node')), '<pre style="white-space:pre-wrap;max-height:450px;overflow:auto">'
                             + Ext.String.htmlEncode(details) + '</pre>');
                     },
                 },
@@ -110,9 +111,11 @@
             me.callParent();
             me.on('show', function () {
                 me.loadConfig(); me.loadCapabilities(); me.loadStatus();
+                // Capability discovery runs pvesh on every node, so it is not
+                // polled: it reloads on show, Refresh, and after a save.
                 if (!me.refreshTask) {
                     me.refreshTask = Ext.TaskManager.start({ run: function () {
-                        if (!me.destroyed && me.isVisible()) { me.loadCapabilities(); me.loadStatus(); }
+                        if (!me.destroyed && me.isVisible()) { me.loadStatus(); }
                     }, interval: 15000 });
                 }
             });
@@ -131,6 +134,7 @@
                     me.commonGovernorStore.loadData((data.common_governors || []).map(function (governor) {
                         return { name: governor };
                     }));
+                    me.restoreGovernorFields();
                     if (!data.complete) {
                         var problems = (data.errors || []).map(function (error) {
                             return (error.node ? error.node + ': ' : '') + (error.message || error.reason);
@@ -169,11 +173,30 @@
                     me.digest = data.digest;
                     me.loadedConfig = data;
                     me.configForm.getForm().setValues(data);
+                    me.restoreGovernorFields();
                     if (data.configuration_error) {
                         Ext.Msg.alert('Invalid cluster policy', Ext.String.htmlEncode(data.configuration_error)
                             + '<br>Review the fields and save to repair the configuration.');
                     }
                 },
+            });
+        },
+
+        // A combo with forceSelection drops a value its store does not
+        // contain. Policy and capabilities load in parallel, so fill any
+        // governor field left empty once both are known, without touching
+        // a value the user has chosen.
+        restoreGovernorFields: function () {
+            var me = this;
+            var form = me.configForm.getForm();
+            if (!me.loadedConfig) { return; }
+            ['active_governor', 'idle_governor', 'migration_governor', 'failsafe_governor'].forEach(function (key) {
+                var field = form.findField(key);
+                var value = me.loadedConfig[key];
+                if (!field.getValue() && value && me.commonGovernorStore.findExact('name', value) !== -1) {
+                    field.setValue(value);
+                    field.resetOriginalValue();
+                }
             });
         },
 
@@ -199,7 +222,9 @@
             values.digest = me.digest;
             request({ url: '/api2/json/cluster/power-management', method: 'PUT', params: values,
                 success: function (response) {
-                    me.digest = Ext.decode(response.responseText).data.digest;
+                    var saved = Ext.decode(response.responseText).data;
+                    me.digest = saved.digest;
+                    me.loadedConfig = saved;
                     me.loadCapabilities();
                     me.loadStatus();
                     Ext.Msg.alert('Power Management', 'Cluster policy saved. Nodes will reconcile on their next poll.');
