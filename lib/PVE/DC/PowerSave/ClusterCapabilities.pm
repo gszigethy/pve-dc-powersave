@@ -1,9 +1,8 @@
 package PVE::DC::PowerSave::ClusterCapabilities;
 use strict;
 use warnings;
-use IPC::Open3 qw(open3);
 use JSON::PP qw(decode_json);
-use Symbol qw(gensym);
+use PVE::DC::PowerSave::Command;
 use Time::HiRes qw(time);
 
 sub new {
@@ -17,25 +16,9 @@ sub new {
 sub _json {
     my ($self, $path) = @_;
     return $self->{runner}->($path) if $self->{runner};
-    my ($stdout, $stderr, $status, $pid);
-    my $ok = eval {
-        local $SIG{ALRM} = sub { die "pvesh timed out\n" };
-        alarm 15;
-        my $err = gensym;
-        $pid = open3(undef, my $out, $err, $self->{pvesh}, 'get', $path, '--output-format', 'json');
-        local $/ = undef;
-        $stdout = <$out> // '';
-        $stderr = <$err> // '';
-        waitpid($pid, 0);
-        $pid = undef;
-        $status = $?;
-        alarm 0;
-        1;
-    };
-    alarm 0;
-    if (!$ok && $pid) { kill 'TERM', $pid; waitpid($pid, 0); }
-    return (0, undef, $@ || 'pvesh failed') if !$ok;
-    return (0, undef, $stderr || 'pvesh failed') if $status != 0;
+    my ($ok, $stdout, $stderr) = PVE::DC::PowerSave::Command::run(
+        [$self->{pvesh}, 'get', $path, '--output-format', 'json'], 15, 'pvesh');
+    return (0, undef, $stderr || 'pvesh failed') if !$ok;
     my $decoded = eval { decode_json($stdout) };
     return (0, undef, $@ || 'invalid pvesh JSON') if $@;
     return (1, $decoded, undef);

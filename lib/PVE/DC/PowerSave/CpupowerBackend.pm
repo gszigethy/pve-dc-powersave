@@ -1,27 +1,10 @@
 package PVE::DC::PowerSave::CpupowerBackend;
 use strict;
 use warnings;
-use IPC::Open3 qw(open3);
-use Symbol qw(gensym);
 use Errno qw(EBUSY);
+use PVE::DC::PowerSave::Command;
 sub new { return bless { cpupower => $_[1] || '/usr/bin/cpupower' }, $_[0] }
-sub _run {
-    my ($self, @cmd) = @_;
-    my ($stdout, $stderr, $status, $pid);
-    my $ok = eval {
-        local $SIG{ALRM} = sub { die "cpupower timed out\n" };
-        alarm 10;
-        my $err = gensym;
-        $pid = open3(undef, my $out, $err, @cmd); local $/ = undef;
-        $stdout = <$out> // ''; $stderr = <$err> // '';
-        waitpid($pid, 0); $pid = undef; $status = $?;
-        alarm 0; 1;
-    };
-    alarm 0;
-    if (!$ok && $pid) { kill 'TERM', $pid; waitpid($pid, 0); }
-    return (0, '', $@ || 'cpupower failed') if !$ok;
-    return ($status == 0, $stdout, $stderr);
-}
+sub _run { my ($self, @cmd) = @_; return PVE::DC::PowerSave::Command::run(\@cmd, 10, 'cpupower'); }
 sub discover {
     my ($self) = @_;
     return { valid => 0, error => 'cpupower executable missing', governors => {} } if !-x $self->{cpupower};

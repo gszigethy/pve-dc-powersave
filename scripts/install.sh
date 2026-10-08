@@ -83,7 +83,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y linux-cpupower python3
 
 echo "Installing $PROGRAM ..."
 install -D -m 0755 "$source_dir/bin/$PROGRAM" "/usr/sbin/$PROGRAM"
-for module in Config DesiredState CpupowerBackend ClusterCapabilities RuntimeStateCollector EventObserver Controller; do
+for module in Command Config DesiredState CpupowerBackend ClusterCapabilities RuntimeStateCollector EventObserver Controller; do
     install -D -m 0644 "$source_dir/lib/PVE/DC/PowerSave/$module.pm" "/usr/share/perl5/PVE/DC/PowerSave/$module.pm"
 done
 install -D -m 0644 "$source_dir/lib/PVE/API2/Cluster/DCPowerSave.pm" "/usr/share/perl5/PVE/API2/Cluster/DCPowerSave.pm"
