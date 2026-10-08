@@ -16,6 +16,12 @@ sub _read_line {
     return $line;
 }
 
+sub _all_policies_on {
+    my ($cap, $governor) = @_;
+    my @policies = @{$cap->{policies} || []};
+    return $cap->{valid} && @policies && !grep { ($_->{current} // '') ne $governor } @policies;
+}
+
 sub new {
     my ($class, %args) = @_;
     return bless {
@@ -135,11 +141,17 @@ sub reconcile {
         && !$runtime->{running_guests} && !$runtime->{boot_protected} && !$config_error) {
         $self->{idle_seen_at} //= $now;
         if ($now - $self->{idle_seen_at} >= $cfg->{idle_candidate_delay}) {
-            # Re-read authoritative local guest state and cluster tasks just
-            # before the only transition that can reduce performance.
-            $runtime = $self->{collector}->collect(0);
-            $runtime->{idle_confirmed} = $runtime->{known} && $runtime->{tasks_known}
-                && !$runtime->{protected} && !$runtime->{running_guests};
+            if (($previous->{state} // '') eq 'IDLE' && _all_policies_on($cap, $cfg->{idle_governor})) {
+                # Already idle with the idle governor applied: no transition
+                # follows, so the complete snapshot above is enough.
+                $runtime->{idle_confirmed} = 1;
+            } else {
+                # Re-read authoritative local guest state and cluster tasks
+                # just before the only transition that can reduce performance.
+                $runtime = $self->{collector}->collect(0);
+                $runtime->{idle_confirmed} = $runtime->{known} && $runtime->{tasks_known}
+                    && !$runtime->{protected} && !$runtime->{running_guests};
+            }
         }
     } else { $self->{idle_seen_at} = undef; }
 
