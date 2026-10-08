@@ -6,6 +6,9 @@ use Sys::Hostname qw(hostname);
 use IPC::Open3 qw(open3);
 use Symbol qw(gensym);
 
+# Long-lived interactive sessions that do not represent host work.
+my %CONSOLE_TASK = map { $_ => 1 } qw(vncproxy vncshell spiceproxy spiceshell termproxy);
+
 sub new {
     my ($class, %args) = @_;
     my $node = $args{node} || hostname();
@@ -85,6 +88,15 @@ sub collect {
         if ($type =~ /^(?:qmstart|qmstop|qmshutdown|qmreboot|vzstart|vzstop|vzshutdown|vzreboot)$/ && $source eq $node) {
             $state{protected} = 1;
             $state{protection_reason} = 'lifecycle_operation';
+            $state{protection_task} = $task->{upid};
+            last;
+        }
+        # Backups, restores, clones, disk moves and similar tasks are host
+        # work even when every guest is stopped. Unknown task types count as
+        # work too; only interactive console sessions are ignored.
+        if ($source eq $node && !$CONSOLE_TASK{$type}) {
+            $state{protected} = 1;
+            $state{protection_reason} = 'node_task';
             $state{protection_task} = $task->{upid};
             last;
         }

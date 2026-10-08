@@ -52,6 +52,22 @@ $collector->{fixture}{'/nodes/pve02/tasks'} = [ { type => 'qmigrate', node => 'p
 $state = $collector->collect(0);
 ok($state->{protected}, 'remote source task protects target despite stale cluster task list');
 $collector->{fixture}{'/nodes/pve02/tasks'} = [];
+$collector->{fixture}{'/nodes/pve01/tasks'} = [ { type => 'vzdump', node => 'pve01', upid => 'UPID:backup' } ];
+$state = $collector->collect(0);
+ok($state->{protected}, 'local backup keeps a node with only stopped guests out of idle');
+is($state->{protection_reason}, 'node_task', 'reason identifies a local host task');
+is($state->{protection_task}, 'UPID:backup', 'protecting task is reported');
+$collector->{fixture}{'/nodes/pve01/tasks'} = [ { type => 'somefuturetask', node => 'pve01', upid => 'UPID:new' } ];
+ok($collector->collect(0)->{protected}, 'unknown local task type fails safe as work');
+$collector->{fixture}{'/nodes/pve01/tasks'} = [ map { { type => $_, node => 'pve01', upid => "UPID:$_" } }
+    qw(vncproxy vncshell spiceproxy spiceshell termproxy) ];
+ok(!$collector->collect(0)->{protected}, 'open console sessions do not block idle');
+$collector->{fixture}{'/nodes/pve01/tasks'} = [];
+$collector->{fixture}{'/nodes/pve02/tasks'} = [ { type => 'vzdump', node => 'pve02', upid => 'UPID:remote-backup' } ];
+ok(!$collector->collect(0)->{protected}, 'another node backup does not protect this node');
+$collector->{fixture}{'/nodes/pve02/tasks'} = [];
+$collector->{fixture}{'/cluster/tasks'} = [ { type => 'vzdump', node => 'pve01', upid => 'UPID:done', endtime => 1, status => 'OK' } ];
+ok(!$collector->collect(0)->{protected}, 'finished local backup releases protection');
 $collector->{fixture}{'/cluster/status'}[0]{quorate} = 0;
 $state = $collector->collect(0);
 ok(!$state->{known}, 'lost quorum invalidates runtime snapshot');
