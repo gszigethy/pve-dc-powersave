@@ -5,3 +5,7 @@ __pycache__/
 .pytest_cache/
 coverage/
 
+.coverage
+cover_db/
+coverage.xml
+perl-coverage.txt
