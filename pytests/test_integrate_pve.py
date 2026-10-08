@@ -83,10 +83,74 @@ __PACKAGE__->register_method({
         self.assertTrue(path.is_file())
         self.assertEqual(path.name, "strict.pm")
 
+    def test_remove_restores_original_files(self) -> None:
+        cluster = """package PVE::API2::Cluster;
+use strict;
+use base qw(PVE::RESTHandler);
+
+__PACKAGE__->register_method({
+    subclass => "PVE::API2::ReplicationConfig",
+"""
+        nodes = """package PVE::API2::Nodes;
+use PVE::API2::NodeConfig;
+
+__PACKAGE__->register_method({
+    subclass => "PVE::API2::Qemu",
+"""
+        index = """<head>
+    <script type="text/javascript" src="/pve2/js/pvemanagerlib.js?ver=[% version %]"></script>
+    <script type="text/javascript" src="/pve2/ext6/locale/locale-[% lang %].js?ver=7.0.0"></script>
+</head>
+"""
+        self.assertEqual(integrate_pve.api_remove(integrate_pve.cluster_transform(cluster)), cluster)
+        self.assertEqual(integrate_pve.api_remove(integrate_pve.node_transform(nodes)), nodes)
+        self.assertEqual(integrate_pve.index_remove(integrate_pve.index_transform(index)), index)
+        self.assertEqual(integrate_pve.api_remove(cluster), cluster)
+        self.assertEqual(integrate_pve.index_remove(index), index)
+
+    def test_main_installs_and_removes_registrations(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            files = {
+                "PVE::API2::Cluster": (root / "Cluster.pm",
+                                       "use base qw(PVE::RESTHandler);\n\n__PACKAGE__->register_method({\n"),
+                "PVE::API2::Nodes": (root / "Nodes.pm",
+                                     "use PVE::API2::NodeConfig;\n\n__PACKAGE__->register_method({\n"),
+            }
+            for path, text in files.values():
+                path.write_text(text, encoding="utf-8")
+            index = root / "index.html.tpl"
+            index_text = '    <script type="text/javascript" src="/pve2/ext6/locale/x.js"></script>\n'
+            index.write_text(index_text, encoding="utf-8")
+            calls = []
+
+            def run(cmd, check):
+                calls.append((cmd, check))
+
+            with patch.object(integrate_pve.os, "geteuid", return_value=0), \
+                    patch.object(integrate_pve, "perl_module_path", side_effect=lambda name: files[name][0]), \
+                    patch.object(integrate_pve, "INDEX", index), \
+                    patch.object(integrate_pve.subprocess, "run", side_effect=run), \
+                    patch("builtins.print"):
+                integrate_pve.main([])
+                self.assertIn("# BEGIN pve-dc-powersave", files["PVE::API2::Cluster"][0].read_text())
+                self.assertIn("/pve2/js/dc-powersave.js", index.read_text())
+                self.assertIn((["systemctl", "restart", "pvedaemon", "pveproxy"], True), calls)
+
+                calls.clear()
+                integrate_pve.main([])
+                self.assertNotIn((["systemctl", "restart", "pvedaemon", "pveproxy"], True), calls)
+
+                integrate_pve.main(["--remove"])
+                for path, text in files.values():
+                    self.assertEqual(path.read_text(), text)
+                self.assertEqual(index.read_text(), index_text)
+                self.assertIn((["systemctl", "restart", "pvedaemon", "pveproxy"], True), calls)
+
     def test_main_requires_root(self) -> None:
         with patch.object(integrate_pve.os, "geteuid", return_value=1000):
             with self.assertRaisesRegex(RuntimeError, "Run integration as root"):
-                integrate_pve.main()
+                integrate_pve.main([])
 
 
 if __name__ == "__main__":
