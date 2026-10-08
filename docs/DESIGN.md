@@ -140,6 +140,12 @@ machine-wide governor value is not sufficient. Before control is enabled, the
 backend discovers each `/sys/devices/system/cpu/cpufreq/policy*` policy, its
 driver, available governors, and current governor.
 
+Policies whose CPUs are all offline (for example after `echo 0 >
+/sys/devices/system/cpu/cpuN/online` or disabling SMT at runtime) are inactive:
+the kernel answers `EBUSY` for their attributes and `cpupower` skips their
+CPUs, so the backend ignores them. Any other unreadable policy still makes the
+node's CPU management unavailable.
+
 A requested governor is applied only when every relevant policy supports it.
 The backend invokes `cpupower -c all frequency-set -g <governor>` and then reads all
 policies back. Command success alone does not count as a successful transition.
