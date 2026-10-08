@@ -98,3 +98,16 @@ To stop automation immediately, clear **Enabled** in the UI. If the UI is
 unavailable, set `enabled: 0` in `/etc/pve/dc-powersave.cfg` on a quorate node.
 This leaves the current governor in place. See [the design guide](docs/DESIGN.md)
 for the safety model and operational limits.
+
+To remove the plugin from a node, run the uninstaller the installer placed
+there:
+
+```sh
+/usr/lib/pve-dc-powersave/uninstall.sh --governor performance
+```
+
+It stops the service, sets every CPU policy to the given governor (omit
+`--governor` to leave the current one), takes the registrations out of the PVE
+API modules and web template, restarts `pvedaemon` and `pveproxy`, and deletes
+the installed files. The shared `/etc/pve/dc-powersave.cfg` is kept unless you
+pass `--purge-config`, which you should only do on the last node.

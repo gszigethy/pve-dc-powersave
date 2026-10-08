@@ -17,7 +17,7 @@ SonarQube Cloud for unsupported Perl analysis:
 
 ## Supporting code validation
 
-- ShellCheck for `scripts/install.sh`.
+- ShellCheck for `scripts/install.sh` and `scripts/uninstall.sh`.
 - Python behavior tests for the Proxmox integration helper on Python 3.11 and
   Python 3.13, matching the supported Proxmox VE 8/9 generations.
 - Python coverage exported as `coverage.xml`, with a 45% floor for the root-only integration helper (current measurement: 49%).

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Install the two narrow API registrations and the datacenter UI script tag.
+"""Install or remove the two narrow API registrations and the UI script tag.
 
 PVE has no supported general UI/API plugin loader. Refuse unknown layouts,
 keep a versioned backup, and never edit the compiled pvemanagerlib.js bundle.
+Run with --remove to take the registrations out again before uninstalling.
 """
+import argparse
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -81,17 +84,39 @@ def index_transform(raw):
                        '    <script type="text/javascript" src="/pve2/js/dc-powersave.js"></script>\n')
 
 
-def main():
+INDEX = pathlib.Path('/usr/share/pve-manager/index.html.tpl')
+REGISTRATION_BLOCK = re.compile(r'# BEGIN pve-dc-powersave\n.*?# END pve-dc-powersave\n\n?', re.S)
+USE_LINE = re.compile(r'^use PVE::API2::(?:Cluster|Nodes)::DCPowerSave;\n\n?', re.M)
+SCRIPT_TAG = re.compile(r'^[ \t]*<script[^>]*/pve2/js/dc-powersave\.js[^>]*></script>\n', re.M)
+
+
+def api_remove(raw):
+    return USE_LINE.sub('', REGISTRATION_BLOCK.sub('', raw))
+
+
+def index_remove(raw):
+    return SCRIPT_TAG.sub('', raw)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Integrate pve-dc-powersave with the PVE API and UI.')
+    parser.add_argument('--remove', action='store_true',
+                        help='remove the registrations instead of adding them')
+    args = parser.parse_args(argv)
     if os.geteuid() != 0:
         raise RuntimeError('Run integration as root')
     cluster = perl_module_path('PVE::API2::Cluster')
     nodes = perl_module_path('PVE::API2::Nodes')
-    index = pathlib.Path('/usr/share/pve-manager/index.html.tpl')
+    index = INDEX
     for path in (cluster, nodes, index):
         if not path.is_file():
             raise RuntimeError(f'PVE integration file missing: {path}')
+    if args.remove:
+        transforms = ((cluster, api_remove), (nodes, api_remove), (index, index_remove))
+    else:
+        transforms = ((cluster, cluster_transform), (nodes, node_transform), (index, index_transform))
     edits = []
-    for path, transform in ((cluster, cluster_transform), (nodes, node_transform), (index, index_transform)):
+    for path, transform in transforms:
         original = path.read_text()
         modified = transform(original)
         if modified != original:
@@ -103,10 +128,11 @@ def main():
             shutil.copy2(path, backup)
             backups.append((path, backup))
             write_atomic(path, modified)
-            print(f'Integrated: {path} (backup: {backup})')
+            print(f'{"Removed from" if args.remove else "Integrated"}: {path} (backup: {backup})')
         for path in (cluster, nodes):
             subprocess.run(['perl', '-c', str(path)], check=True)
-        subprocess.run(['systemctl', 'restart', 'pvedaemon', 'pveproxy'], check=True)
+        if edits:
+            subprocess.run(['systemctl', 'restart', 'pvedaemon', 'pveproxy'], check=True)
     except Exception:
         for path, backup in reversed(backups):
             shutil.copy2(backup, path)

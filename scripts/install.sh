@@ -90,6 +90,7 @@ install -D -m 0644 "$source_dir/lib/PVE/API2/Cluster/DCPowerSave.pm" "/usr/share
 install -D -m 0644 "$source_dir/lib/PVE/API2/Nodes/DCPowerSave.pm" "/usr/share/perl5/PVE/API2/Nodes/DCPowerSave.pm"
 install -D -m 0644 "$source_dir/web/dc-powersave.js" "/usr/share/pve-manager/js/dc-powersave.js"
 install -D -m 0755 "$source_dir/scripts/integrate-pve.py" "/usr/lib/pve-dc-powersave/integrate-pve.py"
+install -D -m 0755 "$source_dir/scripts/uninstall.sh" "/usr/lib/pve-dc-powersave/uninstall.sh"
 install -D -m 0644 "$source_dir/systemd/$SERVICE" "/etc/systemd/system/$SERVICE"
 systemctl daemon-reload
 
@@ -127,3 +128,4 @@ systemctl is-active --quiet "$SERVICE"
 echo
 echo "Installed $PROGRAM on this node. Existing shared policy settings were preserved."
 echo "Open Datacenter -> Power Management, validate every node, then enable the policy."
+echo "To remove it from this node later: /usr/lib/pve-dc-powersave/uninstall.sh --help"
