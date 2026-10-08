@@ -72,7 +72,10 @@ details and makes the policy unit-testable.
 
 Proxmox does not provide a documented, generic third-party event subscription
 that this project should depend on. The service therefore polls the stable
-cluster task view at a short interval. A task change wakes a reconciliation
+cluster task view at a short interval. It reads that list in process through
+`PVE::Cluster` (pmxcfs IPC, the source of `GET /cluster/tasks`) and falls back
+to `pvesh get /cluster/tasks` if that fails, so the poll does not start a new
+process every few seconds. A task change wakes a reconciliation
 quickly; it does not directly execute `cpupower`.
 
 A periodic full reconciliation is also required. It self-heals after missed,
@@ -102,7 +105,9 @@ configuration placement are never used to decide workload.
 
 `IDLE_CANDIDATE` prevents a VM stop from instantly becoming an idle transition.
 After `idle_candidate_delay`, the controller collects runtime state again. If
-anything changed or cannot be verified, it cancels the idle transition.
+anything changed or cannot be verified, it cancels the idle transition. A node
+that is already `IDLE` with the idle governor on every policy is not about to
+transition, so later reconciliations skip that second collection.
 
 ## Workload and protection rules
 

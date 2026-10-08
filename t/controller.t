@@ -44,6 +44,13 @@ my $status = $controller->reconcile;
 is($status->{state}, 'IDLE', 'complete double snapshot permits idle');
 is($collector->{reads}, 2, 'idle transition re-reads authoritative state');
 is($backend->{current}, 'powersave', 'idle governor was applied and verified');
+$status = $controller->reconcile;
+is($status->{state}, 'IDLE', 'steady empty node stays idle');
+is($collector->{reads}, 3, 'steady idle with the idle governor applied needs no second snapshot');
+$backend->{current} = 'performance';
+$status = $controller->reconcile;
+is($collector->{reads}, 5, 'idle governor changed elsewhere: the transition is confirmed again');
+is($backend->{current}, 'powersave', 'idle governor is restored after confirmation');
 
 $collector->{state} = { known => 0, tasks_known => 0, node_available => 1,
                         running_guests => 0, error => 'runtime unavailable' };
