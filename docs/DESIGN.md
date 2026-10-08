@@ -97,7 +97,7 @@ configuration placement are never used to decide workload.
 | ACTIVE | Running work, boot protection, or uncertainty | Active/failsafe |
 | IDLE_CANDIDATE | Empty node waiting for delay and re-check | Active |
 | IDLE | Empty node has passed every check | Idle |
-| PROTECTED | Lifecycle or migration operation is in progress | Migration governor |
+| PROTECTED | Lifecycle, migration, or other local task is in progress | Migration governor |
 | ERROR | CPU management prerequisite/apply/verification failed | Active/failsafe requested |
 
 `IDLE_CANDIDATE` prevents a VM stop from instantly becoming an idle transition.
@@ -110,6 +110,10 @@ The following make a node active:
 
 - A running VM or container.
 - A guest start, stop, shutdown, or reboot task on that node.
+- Any other running task on that node, such as a backup, restore, clone,
+  disk move, or download, including task types this release does not know.
+  Only interactive console sessions (`vncproxy`, `vncshell`, `spiceproxy`,
+  `spiceshell`, `termproxy`) are ignored.
 - Boot protection following service start.
 - An unavailable or incomplete runtime/task/cluster-quorum view.
 - Missing `cpupower`, missing frequency policies, unsupported configuration, or
