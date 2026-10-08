@@ -28,5 +28,7 @@ is_deeply(
     ['perm', '/', ['Sys.Audit']],
     'capability discovery requires datacenter audit permission',
 );
+ok($methods{capabilities}{protected}, 'capability discovery runs in pvedaemon because pvesh requires root');
+ok($methods{update}{protected}, 'policy update runs in pvedaemon because it also runs capability discovery');
 
 done_testing;

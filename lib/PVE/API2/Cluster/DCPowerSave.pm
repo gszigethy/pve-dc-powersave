@@ -23,8 +23,11 @@ sub cluster_capabilities {
     return PVE::DC::PowerSave::ClusterCapabilities->new->collect;
 }
 
+# Capability discovery runs pvesh, which only works as root. Unprotected
+# methods execute inside pveproxy as www-data; protected => 1 makes pveproxy
+# forward the call to pvedaemon, which runs as root.
 __PACKAGE__->register_method({
-    name => 'capabilities', path => 'capabilities', method => 'GET',
+    name => 'capabilities', path => 'capabilities', method => 'GET', protected => 1,
     description => 'Governors supported by every CPU policy on every cluster node',
     permissions => { check => ['perm', '/', ['Sys.Audit']] },
     parameters => { additionalProperties => 0, properties => {} },
