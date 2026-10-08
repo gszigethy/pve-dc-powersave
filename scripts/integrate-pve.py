@@ -115,6 +115,10 @@ def main(argv=None):
         transforms = ((cluster, api_remove), (nodes, api_remove), (index, index_remove))
     else:
         transforms = ((cluster, cluster_transform), (nodes, node_transform), (index, index_transform))
+    apply_edits(plan_edits(transforms), (cluster, nodes), 'Removed from' if args.remove else 'Integrated')
+
+
+def plan_edits(transforms):
     edits = []
     for path, transform in transforms:
         original = path.read_text()
@@ -122,14 +126,18 @@ def main(argv=None):
         if modified != original:
             backup = path.with_name(path.name + f'.dc-powersave.backup.{time.time_ns()}')
             edits.append((path, modified, backup))
+    return edits
+
+
+def apply_edits(edits, perl_modules, verb):
     backups = []
     try:
         for path, modified, backup in edits:
             shutil.copy2(path, backup)
             backups.append((path, backup))
             write_atomic(path, modified)
-            print(f'{"Removed from" if args.remove else "Integrated"}: {path} (backup: {backup})')
-        for path in (cluster, nodes):
+            print(f'{verb}: {path} (backup: {backup})')
+        for path in perl_modules:
             subprocess.run(['perl', '-c', str(path)], check=True)
         if edits:
             subprocess.run(['systemctl', 'restart', 'pvedaemon', 'pveproxy'], check=True)
