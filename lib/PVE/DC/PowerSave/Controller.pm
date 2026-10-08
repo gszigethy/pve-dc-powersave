@@ -1,7 +1,7 @@
 package PVE::DC::PowerSave::Controller;
 use strict;
 use warnings;
-use Fcntl qw(:flock);
+use Fcntl qw(:flock O_WRONLY O_CREAT O_NOFOLLOW);
 use JSON::PP qw(encode_json);
 use POSIX qw(uname);
 use Time::HiRes qw(time sleep);
@@ -22,8 +22,24 @@ sub new {
         config_path => $args{config_path}, collector => $args{collector},
         backend => $args{backend}, observer => $args{observer}, started => time, idle_seen_at => undef,
         previous => {}, managed => 0, verbose => $args{verbose}, status_path => $args{status_path} || '/run/pve-dc-powersave/status.json',
-        lock_path => $args{lock_path} || '/run/lock/pve-dc-powersave.lock',
+        lock_path => $args{lock_path} || '/run/pve-dc-powersave/controller.lock',
     }, $class;
+}
+
+sub _open_lock {
+    my ($self) = @_;
+    my $path = $self->{lock_path};
+    my $dir = $path; $dir =~ s|/[^/]+$||;
+    mkdir($dir, 0755) if !-d $dir;
+    # Only the service user may be able to create the lock. In a shared,
+    # world-writable directory such as /run/lock any local user can create
+    # and hold it first, and every reconciliation would then be skipped.
+    my @dir_stat = lstat($dir) or die "lock: cannot stat $dir: $!\n";
+    die "lock: $dir must be a directory owned by uid $> and not writable by others\n"
+        if !-d _ || $dir_stat[4] != $> || ($dir_stat[2] & oct('022'));
+    sysopen(my $lock, $path, O_WRONLY | O_CREAT | O_NOFOLLOW, oct('0600'))
+        or die "lock: cannot open $path: $!\n";
+    return $lock;
 }
 
 sub _publish {
@@ -55,7 +71,7 @@ sub _log_change {
 
 sub reconcile {
     my ($self) = @_;
-    open(my $lock, '>>', $self->{lock_path}) or die "lock: $!\n";
+    my $lock = $self->_open_lock;
     return if !flock($lock, LOCK_EX | LOCK_NB);
     my $now = time;
     my $cfg = eval { PVE::DC::PowerSave::Config->load($self->{config_path}) };
