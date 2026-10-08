@@ -48,10 +48,18 @@ sub _publish {
     my $dir = $path; $dir =~ s|/[^/]+$||;
     mkdir($dir, 0755) if !-d $dir;
     my $tmp = "$path.$$";
-    open(my $fh, '>', $tmp) or die "cannot write status: $!\n";
-    print {$fh} encode_json($status);
-    close($fh) or die "cannot close status: $!\n";
-    rename($tmp, $path) or die "cannot publish status: $!\n";
+    my $written = eval {
+        open(my $fh, '>', $tmp) or die "cannot write status: $!\n";
+        print {$fh} encode_json($status) or die "cannot write status: $!\n";
+        close($fh) or die "cannot close status: $!\n";
+        rename($tmp, $path) or die "cannot publish status: $!\n";
+        1;
+    };
+    if (!$written) {
+        my $error = $@;
+        unlink($tmp);
+        die $error;
+    }
     return;
 }
 
@@ -154,6 +162,7 @@ sub reconcile {
     } elsif (!$self->{backend}->supports_all($cap, $governor)) {
         $error = "$governor is unavailable on a CPU policy";
         $governor = $cfg->{failsafe_governor};
+        $status->{desired_governor} = $governor;
         $status->{state} = 'ERROR';
         $status->{reason} = 'configured_governor_unavailable';
     }
@@ -171,8 +180,10 @@ sub reconcile {
             $self->{backend}->set_governor($cfg->{failsafe_governor});
         }
         $error ||= 'governor verification failed' if !$verified;
-    } else {
-        $error ||= 'failsafe governor is unavailable';
+    } elsif ($cap->{valid}) {
+        # Only reached after the requested governor was replaced by the
+        # failsafe governor, which is not supported either.
+        $error .= "; failsafe governor $governor is unavailable on a CPU policy";
     }
     if ($error) {
         $status->{state} = 'ERROR';
