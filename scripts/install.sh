@@ -48,7 +48,11 @@ cleanup_dir=""
 cleanup() { [[ -z "$cleanup_dir" ]] || rm -rf -- "$cleanup_dir"; }
 trap cleanup EXIT
 
-if [[ -z "$source_dir" && "$repo_specified" -eq 0 ]]; then
+# Use the checkout this script belongs to only when it was run from a file.
+# Under "curl ... | bash" BASH_SOURCE is empty, and dirname would resolve to
+# the parent of the current directory, which could install an unrelated or
+# stale tree as root instead of downloading the requested release.
+if [[ -z "$source_dir" && "$repo_specified" -eq 0 && -f "${BASH_SOURCE[0]:-}" ]]; then
     source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 fi
 if [[ "$repo_specified" -eq 1 || ! -f "$source_dir/bin/$PROGRAM" ]]; then

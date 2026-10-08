@@ -1,6 +1,7 @@
 use strict;
 use warnings;
 use Test::More;
+use Fcntl qw(:flock);
 use File::Temp qw(tempdir);
 use lib 'lib';
 use PVE::DC::PowerSave::Config;
@@ -77,4 +78,29 @@ PVE::DC::PowerSave::Config->save($cfg, $config_path, PVE::DC::PowerSave::Config-
 is($controller->reconcile->{state}, 'DISABLED', 'restored disabled configuration clears the error');
 unlink($config_path);
 is($controller->reconcile->{state}, 'DISABLED', 'missing configuration after a disabled policy stays unmanaged');
+is(PVE::DC::PowerSave::Controller->new->{lock_path}, '/run/pve-dc-powersave/controller.lock',
+    'default lock lives in the service runtime directory, not world-writable /run/lock');
+my $shared = "$dir/shared";
+mkdir($shared) or die "mkdir $shared: $!";
+chmod(oct('1777'), $shared) or die "chmod $shared: $!";
+my $exposed = PVE::DC::PowerSave::Controller->new(
+    config_path => $config_path, collector => $collector, backend => $backend,
+    lock_path => "$shared/lock", status_path => "$dir/exposed-status.json",
+);
+eval { $exposed->reconcile };
+like($@, qr/not writable by others/, 'lock in a directory other users can write is refused');
+ok(!-e "$shared/lock", 'no lock file is created in an unsafe directory');
+symlink("$dir/symlink-target", "$dir/symlink.lock") or die "symlink: $!";
+my $linked = PVE::DC::PowerSave::Controller->new(
+    config_path => $config_path, collector => $collector, backend => $backend,
+    lock_path => "$dir/symlink.lock", status_path => "$dir/linked-status.json",
+);
+eval { $linked->reconcile };
+like($@, qr/lock: cannot open/, 'symlinked lock file is not followed');
+ok(!-e "$dir/symlink-target", 'symlink target is not created');
+open(my $holder, '>>', "$dir/lock") or die "lock: $!";
+flock($holder, LOCK_EX) or die "flock: $!";
+is($controller->reconcile, undef, 'a held lock still skips an overlapping reconciliation');
+close($holder);
+ok($controller->reconcile, 'reconciliation resumes once the lock is released');
 done_testing;
