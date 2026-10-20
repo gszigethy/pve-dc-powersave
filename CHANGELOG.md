@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here.
 
-## [0.3.0-beta.1] - 2026-10-08
+## [0.3.0] - 2026-10-20
 
 ### Added
 
@@ -55,7 +55,7 @@ All notable changes to this project are documented here.
   `PVE::Cluster` and falls back to `pvesh`, avoiding about 43,000 process
   starts per node per day. A node that stays idle no longer collects its
   runtime state twice per reconciliation.
-- CI uses `actions/setup-node` 7.0.0 and shellchecks `scripts/uninstall.sh`.
+- CI uses `actions/setup-node` 7.1.0 and shellchecks `scripts/uninstall.sh`.
 - Perl test count grew from 66 to 141, with the CPU backend and the
   subprocess runner now covered.
 
