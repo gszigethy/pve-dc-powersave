@@ -67,7 +67,11 @@ Governors are checked on **every CPU frequency policy** on each node. The
 controller reads the actual governor back after a change. Missing or uncertain
 runtime information requests active; it never proves a node idle. Enabling is
 rejected unless every node reports fresh capabilities and all four configured
-governors are available everywhere.
+governors are available everywhere. A node that runs storage services for
+other nodes or clients never idles, even with no guest: `ceph-osd`,
+`ceph-mon`, `ceph-mds`, `nfsd`, `glusterfsd`, `tgtd` or `proxmox-backup-proxy`
+keep it on the active governor (reason `storage_service`, listed in the
+status as `storage_services`).
 
 ## UI and API behavior
 

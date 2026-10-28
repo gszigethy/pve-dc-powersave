@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Storage removals (`dirremove`, `lvmremove`, `zfsremove`, ...) and HA
+  `hastart`/`hastop` tasks no longer put every node on the migration
+  governor. Only `qmigrate`, `vzmigrate`, `migrateall`, `hamigrate`,
+  `harelocate` and other migration task types do; other work protects just
+  the node that runs it.
+- A guest start that begins and ends between two task polls is noticed within
+  seconds instead of at the next safety reconciliation. Finished tasks now
+  change the wake-up fingerprint too.
+- One unreachable cluster node no longer puts every node into `ERROR`. The
+  nodes stay on the active governor with reason `task_state_unknown`, the
+  status names the unreachable member in `task_state_detail`, and the member
+  is not queried again for 60 seconds.
+
+### Changed
+
+- A node that runs storage services (`ceph-osd`, `ceph-mon`, `ceph-mds`,
+  `nfsd`, `glusterfsd`, `tgtd`, `proxmox-backup-proxy`) stays on the active
+  governor with reason `storage_service`, and the status lists them in
+  `storage_services`. Ceph, NFS and Proxmox Backup Server nodes therefore no
+  longer idle at all.
+- Each reconciliation starts fewer `pvesh` processes: the other nodes' active
+  task lists are only fetched when the node could otherwise become idle.
+- Opening or closing a console session, and tasks on other nodes other than
+  migrations, no longer trigger a reconciliation on every node.
+
 ## [0.3.0] - 2026-10-20
 
 ### Added

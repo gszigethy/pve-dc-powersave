@@ -115,6 +115,8 @@ sub reconcile {
         running_ct_count => $runtime->{running_ct_count} || 0,
         protected => $runtime->{protected} ? 1 : 0,
         protection_reason => $runtime->{protection_reason},
+        storage_services => $runtime->{storage_services} || [], storage_error => $runtime->{storage_error},
+        task_state_detail => $runtime->{task_state_detail} || [],
         node_available => $runtime->{node_available} ? 1 : 0,
         prerequisites => {
             cpupower_installed => -x $self->{backend}->{cpupower} ? 1 : 0,
@@ -138,6 +140,7 @@ sub reconcile {
     }
 
     if ($runtime->{known} && $runtime->{tasks_known} && !$runtime->{protected}
+        && !PVE::DC::PowerSave::DesiredState->storage_blocks_idle($runtime)
         && !$runtime->{running_guests} && !$runtime->{boot_protected} && !$config_error) {
         $self->{idle_seen_at} //= $now;
         if ($now - $self->{idle_seen_at} >= $cfg->{idle_candidate_delay}) {
@@ -150,6 +153,7 @@ sub reconcile {
                 # just before the only transition that can reduce performance.
                 $runtime = $self->{collector}->collect(0);
                 $runtime->{idle_confirmed} = $runtime->{known} && $runtime->{tasks_known}
+                    && !PVE::DC::PowerSave::DesiredState->storage_blocks_idle($runtime)
                     && !$runtime->{protected} && !$runtime->{running_guests};
             }
         }
@@ -162,6 +166,8 @@ sub reconcile {
     $status->{desired_governor} = $desired->{governor};
     $status->{protected} = $runtime->{protected} ? 1 : 0;
     $status->{protection_reason} = $runtime->{protection_reason};
+    @{$status}{qw(storage_services storage_error task_state_detail)} =
+        ($runtime->{storage_services} || [], $runtime->{storage_error}, $runtime->{task_state_detail} || []);
     $status->{running_vm_count} = $runtime->{running_vm_count} || 0;
     $status->{running_ct_count} = $runtime->{running_ct_count} || 0;
     my $error = $config_error || $runtime->{error} || $cap->{error};
