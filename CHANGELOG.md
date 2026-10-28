@@ -6,11 +6,11 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
-- Storage removals (`dirremove`, `lvmremove`, `zfsremove`, ...) and HA
-  `hastart`/`hastop` tasks no longer put every node on the migration
-  governor. Only `qmigrate`, `vzmigrate`, `migrateall`, `hamigrate`,
-  `harelocate` and other migration task types do; other work protects just
-  the node that runs it.
+- Storage removals (`dirremove`, `lvmremove`, `zfsremove`, ...), disk moves
+  (`qmmove`, `move_volume`) and HA `hastart`/`hastop` tasks no longer put
+  every node on the migration governor. Only `qmigrate`, `vzmigrate`,
+  `migrateall`, `hamigrate`, `harelocate` and other migration task types do;
+  other work protects just the node that runs it.
 - A guest start that begins and ends between two task polls is noticed within
   seconds instead of at the next safety reconciliation. Finished tasks now
   change the wake-up fingerprint too.
@@ -28,7 +28,7 @@ All notable changes to this project are documented here.
   longer idle at all.
 - Each reconciliation starts fewer `pvesh` processes: the other nodes' active
   task lists are only fetched when the node could otherwise become idle.
-- Opening or closing a console session, and tasks on other nodes other than
+- Opening or closing a console, and tasks on other nodes that are not
   migrations, no longer trigger a reconciliation on every node.
 
 ## [0.3.0] - 2026-10-20

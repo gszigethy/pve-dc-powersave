@@ -115,7 +115,8 @@ sub reconcile {
         running_ct_count => $runtime->{running_ct_count} || 0,
         protected => $runtime->{protected} ? 1 : 0,
         protection_reason => $runtime->{protection_reason},
-        storage_services => $runtime->{storage_services} || [], storage_error => $runtime->{storage_error},
+        storage_services => $runtime->{storage_services} || [],
+        storage_error => $runtime->{storage_error},
         task_state_detail => $runtime->{task_state_detail} || [],
         node_available => $runtime->{node_available} ? 1 : 0,
         prerequisites => {
