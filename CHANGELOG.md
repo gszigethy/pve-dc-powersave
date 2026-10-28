@@ -28,9 +28,17 @@ All notable changes to this project are documented here.
   create `/etc/pve/dc-powersave.cfg` and continues. The default configuration
   is written as a temporary file and renamed into place, so no node reads a
   half-written file.
+- Node status now survives manual restarts and crashes of the service: the
+  runtime directory is kept across restarts (a real stop still removes it),
+  so the Nodes API no longer reports `service_not_reporting` and policy saves
+  are no longer refused while the service restarts.
 
 ### Changed
 
+- The service never hits systemd's start limit and, on systemd 254 or newer
+  (Proxmox VE 9), backs off from 3 seconds to 5 minutes while it keeps
+  failing. Proxmox VE 8 (systemd 252) ignores the two new keys and logs an
+  "Unknown key" notice at `systemctl daemon-reload`.
 - The installer installs every `lib/PVE/DC/PowerSave/*.pm` module and replaces
   the module directory as a whole, so modules removed in a newer version do
   not stay behind.
