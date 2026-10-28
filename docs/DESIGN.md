@@ -204,9 +204,16 @@ writes require `Sys.Modify`; browser writes require a Proxmox CSRF token. No
 endpoint accepts an arbitrary governor command.
 
 Proxmox has no general third-party UI/API loader for this feature. Installation
-adds small registrations to the Proxmox API modules and web template, keeping
-backups. A `pve-manager` upgrade may remove them. Rerun the installer on every
-node after an upgrade, then confirm the UI and API are available.
+adds small registrations to the Proxmox API modules and web template. Before
+each edit it copies the file to `/var/lib/pve-dc-powersave/backups/` (the newest
+five per file are kept; they are for inspection, never for restoring after an
+upgrade). The helper finds the files in Perl's `@INC` without loading them and
+compiles each edited file before it gives the API daemons a graceful
+`reload-or-restart`; on failure it restores the files from its backups.
+Removal takes the registrations out before the files they load are deleted, and
+the uninstaller verifies this independently of the helper. A `pve-manager`
+upgrade may remove the registrations. Rerun the installer on every node after an
+upgrade, then confirm the UI and API are available.
 
 Useful diagnostic checks on a node are:
 
