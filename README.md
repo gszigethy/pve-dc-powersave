@@ -73,8 +73,21 @@ governors are available everywhere.
 
 The UI calls authenticated Proxmox endpoints. Reading policy and node status
 requires `Sys.Audit`; changing policy and requesting reconciliation requires
-`Sys.Modify`. Browser writes use Proxmox's CSRF token. There is no API action
-to set an arbitrary governor.
+`Sys.Modify`, and the **Reconcile** buttons are hidden without it. Browser
+writes use Proxmox's CSRF token. There is no API action to set an arbitrary
+governor.
+
+A policy update may carry only the properties that change; the rest keep their
+stored value, and a `digest` is optional (when given it must still match).
+Every node has to report fresh capabilities only when an update turns the
+policy on or changes a governor of an enabled policy. Interval changes and
+disabling never wait for the nodes, so a node that is down or mid-upgrade
+cannot block them. A node whose Power Management API is gone, typically after a
+`pve-manager` upgrade, shows **plugin_not_installed**: rerun the installer on
+that node. The capability report is cached for about 10 seconds, so refreshing
+the page does not query every node again. A failed background refresh is
+shown next to the node table instead of in a dialog and clears itself on the
+next success.
 
 The **Reconcile selected** and **Reconcile all** buttons schedule the normal
 controller path. They do not bypass the runtime and safety checks. The local
@@ -98,9 +111,17 @@ refresh the browser and check the Power Management page. The installer keeps
 the shared configuration and is idempotent.
 
 To stop automation immediately, clear **Enabled** in the UI. If the UI is
-unavailable, set `enabled: 0` in `/etc/pve/dc-powersave.cfg` on a quorate node.
-This leaves the current governor in place. See [the design guide](docs/DESIGN.md)
-for the safety model and operational limits.
+unavailable, run this as `root` on a quorate node:
+
+```sh
+pvesh set /cluster/power-management --enabled 0
+```
+
+It needs no other option, works even when nodes are unreachable or report
+errors, and leaves the current governor in place. If the stored configuration
+is unreadable, the same command rewrites it with `enabled: 0` and the default
+values. Do not edit `/etc/pve/dc-powersave.cfg` by hand. See
+[the design guide](docs/DESIGN.md) for the safety model and operational limits.
 
 To remove the plugin from a node, run the uninstaller the installer placed
 there:

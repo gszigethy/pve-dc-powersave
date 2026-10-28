@@ -168,6 +168,23 @@ on each node, then intersects those node-local results across the cluster. The
 UI only offers this final common set. Enabling a policy is rejected when any
 node is offline, missing, stale, or unable to report CPU policies, when the
 common set is empty, or when a configured governor is outside the common set.
+A node that answers 501 (its API registration was removed by a `pve-manager`
+upgrade) is reported as `plugin_not_installed`, with a reminder to rerun the
+installer there.
+
+Capabilities are checked only when an update turns the policy on or changes a
+governor while it is (or becomes) enabled. Interval changes and disabling skip
+the check, so one broken node never blocks them.
+
+Discovery makes one `pvesh` call per node and runs in `pvedaemon`, which has
+three workers by default. The report is therefore cached for about 10 seconds
+in `/run/pve-dc-powersave/capabilities.json` (root-only, written atomically)
+and computed by one request at a time under a non-blocking `flock`. A request
+that arrives meanwhile gets the previous report with its `age`; validation of
+a policy update accepts only a report younger than 10 seconds and otherwise
+waits (at most 20 seconds) for the computing request. When the runtime
+directory does not exist, because the service has not run, nothing is cached
+and the directory is not created.
 See the [Intel P-state mode guide](INTEL-PSTATE.md) when otherwise healthy
 nodes expose incompatible governor sets.
 
@@ -195,13 +212,29 @@ only after testing workload starts/stops and migrations.
 The datacenter UI is the normal configuration and status interface. It shows
 the shared policy, the actual and desired governors for each node, workload
 counts, protection reason, errors, and detailed CPU policy discovery. Its
-**Reconcile** buttons schedule the same controller path used by task polling.
+**Reconcile** buttons, shown only to users with `Sys.Modify`, schedule the same
+controller path used by task polling. A failed background refresh is shown
+inline in the node table toolbar and clears on the next success; only actions
+the user started (save, reconcile) open a dialog.
 
 The API routes are `GET`/`PUT /cluster/power-management`,
 `GET /nodes/{node}/power-management`, and
 `POST /nodes/{node}/power-management/reconcile`. Reads require `Sys.Audit` and
 writes require `Sys.Modify`; browser writes require a Proxmox CSRF token. No
 endpoint accepts an arbitrary governor command.
+
+`PUT /cluster/power-management` takes any subset of the policy properties and
+an optional `digest`; the given properties are merged into the stored policy.
+Before any capability work it checks the digest and fails fast. Capability
+discovery runs outside the cluster lock, the digest is checked again inside
+it, and the response carries the digest `save` computed under the lock, never
+one read after it. A request whose result is already stored (a retry after a
+browser timeout) succeeds with the current digest. If the stored file cannot
+be loaded, a request carrying every property replaces it, a request with
+`enabled 0` writes `enabled: 0` plus defaults for the missing keys, and
+anything else is refused. `pvesh set /cluster/power-management --enabled 0` is
+therefore the command-line emergency stop; disabling never needs a
+capability check.
 
 Proxmox has no general third-party UI/API loader for this feature. Installation
 adds small registrations to the Proxmox API modules and web template, keeping
