@@ -91,8 +91,8 @@ without reconciling when the service is reconciling at that moment.
 ## Proxmox upgrades and removal
 
 Proxmox does not expose a general third-party UI/API plugin loader for this
-feature. The installer makes small, backed-up registrations in Proxmox's API
-modules and web template. A `pve-manager` package upgrade may replace those
+feature. The installer makes small registrations in Proxmox's API
+modules and web template and keeps backups of the files it edits (see below). A `pve-manager` package upgrade may replace those
 registrations. **Rerun the installer on every node after a PVE upgrade**, then
 refresh the browser and check the Power Management page. The installer keeps
 the shared configuration and is idempotent.
@@ -111,6 +111,30 @@ there:
 
 It stops the service, sets every CPU policy to the given governor (omit
 `--governor` to leave the current one), takes the registrations out of the PVE
-API modules and web template, restarts `pvedaemon` and `pveproxy`, and deletes
-the installed files. The shared `/etc/pve/dc-powersave.cfg` is kept unless you
-pass `--purge-config`, which you should only do on the last node.
+API modules and web template, reloads `pvedaemon` and `pveproxy` (a graceful
+reload, not a restart), checks that no registration is left, and only then
+deletes the installed files and `/run/pve-dc-powersave`. The shared
+`/etc/pve/dc-powersave.cfg` is kept unless you pass `--purge-config`, which you
+should only do on the last node.
+
+The uninstaller refuses to continue, before it changes anything, when the only
+integration helper it can find predates removal support. This is the case on a
+node installed with 0.2.1-beta.1 or older. Run `uninstall.sh` from a
+v0.3.0-or-newer source checkout or release archive instead
+(`scripts/uninstall.sh`); it uses the helper next to it. If a registration
+cannot be removed, the uninstaller stops without deleting the modules and lists
+what is left, because removing the modules while PVE still loads them stops
+`pvedaemon` and `pveproxy` from starting.
+
+Backups of the edited PVE files are kept in
+`/var/lib/pve-dc-powersave/backups/` (mode 0700, the newest five per file; the
+file name is the original path with `/` written as `%2F`). Backups that older
+versions left next to the PVE files (`*.dc-powersave.backup.*`) are moved there
+the next time the installer or uninstaller runs. They are for inspection only:
+after a PVE upgrade, restoring one would downgrade Proxmox's API. The
+uninstaller does not delete them; remove them yourself when you no longer need
+them:
+
+```sh
+rm -r /var/lib/pve-dc-powersave
+```

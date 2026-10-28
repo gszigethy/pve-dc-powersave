@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Uninstalling a node that was installed with 0.2.1-beta.1 or older no longer
+  deletes the plugin modules while PVE still loads them, which stopped
+  `pvedaemon` and `pveproxy` at their next restart. Those versions installed a
+  helper that ignores `--remove`; the uninstaller now only runs a helper whose
+  source supports removal, prefers the one next to it, and otherwise stops
+  before changing anything and tells you to run `uninstall.sh` from a v0.3.0 or
+  newer source tree or release archive. After removal it checks that no
+  registration is left and keeps the modules if one is.
+- `integrate-pve.py --remove` now repairs a node whose plugin modules are
+  already missing. It finds `Cluster.pm` and `Nodes.pm` in Perl's `@INC`
+  without loading them, and Perl's own error message is shown when a Perl
+  command fails.
+- The helper reloads `pvedaemon` and `pveproxy` (`systemctl reload-or-restart`)
+  instead of hard-restarting them, including when it rolls a failed edit back.
+  Running API workers are no longer killed.
+
+### Changed
+
+- Backups of `Cluster.pm`, `Nodes.pm` and `index.html.tpl` now live in
+  `/var/lib/pve-dc-powersave/backups/` (mode 0700) instead of next to the PVE
+  files, and only the newest five per file are kept. Existing
+  `*.dc-powersave.backup.*` copies are moved there the next time the installer
+  or uninstaller runs. They are for inspection only; do not restore one after
+  a PVE upgrade. The uninstaller keeps them and tells you where they are.
+- The uninstaller removes `/run/pve-dc-powersave` after stopping the service,
+  but only when it is a real directory and not a symlink.
+
 ## [0.3.0] - 2026-10-20
 
 ### Added

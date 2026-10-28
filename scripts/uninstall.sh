@@ -3,7 +3,16 @@
 set -Eeuo pipefail
 
 readonly SERVICE="pve-dc-powersave.service"
-readonly CONFIG="/etc/pve/dc-powersave.cfg"
+# TEST-ONLY: pytests/test_uninstall_sh.py sets this to a temporary directory that is prefixed
+# to every absolute path below (and lets the script run without root). It is
+# empty in real use; never set it on a node.
+root="${PVE_DC_POWERSAVE_TEST_ROOT:-}"
+readonly CONFIG="$root/etc/pve/dc-powersave.cfg"
+readonly LIB_DIR="$root/usr/lib/pve-dc-powersave"
+readonly PERL_DIR="$root/usr/share/perl5"
+readonly PVE_MANAGER_DIR="$root/usr/share/pve-manager"
+readonly RUN_DIR="$root/run/pve-dc-powersave"
+readonly BACKUP_DIR="/var/lib/pve-dc-powersave/backups"
 governor=""
 purge_config=0
 
@@ -32,7 +41,7 @@ while (($#)); do
     esac
 done
 
-if (( EUID != 0 )); then
+if (( EUID != 0 )) && [[ -z "$root" ]]; then
     echo "Run as root." >&2
     exit 1
 fi
@@ -41,9 +50,43 @@ if [[ -n "$governor" && ! "$governor" =~ ^[A-Za-z0-9_.-]+$ ]]; then
     exit 2
 fi
 
+# --- Choose and vet the integration helper before changing anything. --------
+# Helpers installed by v0.1.0 through v0.2.1-beta.1 ignore their arguments:
+# running one with --remove (or even --help) re-runs the integration and exits
+# 0. So the helper is never run to find out what it supports; its source is
+# checked instead.
+supports_remove() {
+    grep -Eq "add_argument\(\s*['\"]--remove['\"]" "$1" 2>/dev/null
+}
+
+helper=""
+script_path="${BASH_SOURCE[0]:-}"
+if [[ -f "$script_path" ]]; then
+    sibling="$(cd -- "$(dirname -- "$script_path")" && pwd -P)/integrate-pve.py"
+    [[ -f "$sibling" ]] && helper="$sibling"
+fi
+[[ -n "$helper" ]] || helper="$LIB_DIR/integrate-pve.py"
+if [[ ! -f "$helper" ]] || ! supports_remove "$helper"; then
+    {
+        echo "Cannot uninstall safely: no integration helper that supports --remove was found."
+        echo "Checked: $helper"
+        echo "Helpers installed by v0.2.1-beta.1 or older ignore --remove and would leave the"
+        echo "PVE registrations in place; deleting the plugin files then breaks pvedaemon and"
+        echo "pveproxy at their next restart."
+        echo "Run uninstall.sh from a v0.3.0-or-newer source tree or release archive"
+        echo "(scripts/uninstall.sh), which carries its own helper. Nothing was changed."
+    } >&2
+    exit 1
+fi
+
 echo "Stopping $SERVICE ..."
 if systemctl list-unit-files "$SERVICE" >/dev/null 2>&1; then
     systemctl disable --now "$SERVICE" || true
+fi
+# The unit's RuntimeDirectory may be preserved across restarts, so remove it
+# explicitly, but only a real directory (never follow a symlink).
+if [[ -d "$RUN_DIR" && ! -L "$RUN_DIR" ]]; then
+    rm -rf -- "$RUN_DIR"
 fi
 
 if [[ -n "$governor" ]]; then
@@ -52,27 +95,58 @@ if [[ -n "$governor" ]]; then
 fi
 
 # Take the registrations out first, while the modules they load still exist,
-# so pvedaemon and pveproxy restart cleanly.
-helper=/usr/lib/pve-dc-powersave/integrate-pve.py
-if [[ ! -f "$helper" && -f "${BASH_SOURCE[0]:-}" ]]; then
-    helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/integrate-pve.py"
+# so pvedaemon and pveproxy reload cleanly.
+echo "Removing the Datacenter UI and API registrations ..."
+if ! python3 "$helper" --remove; then
+    echo "The integration helper failed; the plugin files were NOT deleted." >&2
+    echo "Fix the error above, then run this uninstaller again." >&2
+    exit 1
 fi
-if [[ -f "$helper" ]]; then
-    echo "Removing the Datacenter UI and API registrations ..."
-    python3 "$helper" --remove
-else
-    echo "Integration helper not found; check PVE::API2::Cluster, PVE::API2::Nodes and" >&2
-    echo "/usr/share/pve-manager/index.html.tpl for 'pve-dc-powersave' manually." >&2
+
+# Do not trust the helper: confirm that no registration is left before any
+# module file is deleted. A remaining one makes pvedaemon/pveproxy fail to
+# start once the module is gone.
+perl_file() {
+    local dir
+    while IFS= read -r dir; do
+        if [[ -f "$dir/$1" ]]; then
+            printf '%s\n' "$dir/$1"
+            return 0
+        fi
+    done < <(perl -e 'print join "\n", @INC' 2>/dev/null)
+    return 1
+}
+remaining=()
+check_file() { # file, fixed string that must be gone
+    if [[ -z "$1" || ! -f "$1" ]]; then
+        remaining+=("could not locate the file to check for '$2'")
+    elif grep -qF -- "$2" "$1"; then
+        remaining+=("$1 still contains '$2'")
+    fi
+}
+check_file "$(perl_file PVE/API2/Cluster.pm || true)" "PVE::API2::Cluster::DCPowerSave"
+check_file "$(perl_file PVE/API2/Nodes.pm || true)" "PVE::API2::Nodes::DCPowerSave"
+check_file "$PVE_MANAGER_DIR/index.html.tpl" "dc-powersave.js"
+if ((${#remaining[@]})); then
+    {
+        echo "The registrations are not fully removed, so the plugin files were NOT deleted:"
+        printf '  - %s\n' "${remaining[@]}"
+        echo "Remove them by hand: in Cluster.pm and Nodes.pm delete the 'use PVE::API2::...::DCPowerSave;'"
+        echo "line and the block from '# BEGIN pve-dc-powersave' to '# END pve-dc-powersave'; in"
+        echo "index.html.tpl delete the <script> tag for dc-powersave.js. Then run"
+        echo "'systemctl reload-or-restart pvedaemon pveproxy' and this uninstaller again."
+    } >&2
+    exit 1
 fi
 
 echo "Removing installed files ..."
-rm -f -- /usr/sbin/pve-dc-powersave \
-    /usr/share/perl5/PVE/API2/Cluster/DCPowerSave.pm \
-    /usr/share/perl5/PVE/API2/Nodes/DCPowerSave.pm \
-    /usr/share/pve-manager/js/dc-powersave.js \
-    "/etc/systemd/system/$SERVICE"
-rm -rf -- /usr/share/perl5/PVE/DC/PowerSave /usr/lib/pve-dc-powersave
-rmdir --ignore-fail-on-non-empty /usr/share/perl5/PVE/DC 2>/dev/null || true
+rm -f -- "$root/usr/sbin/pve-dc-powersave" \
+    "$PERL_DIR/PVE/API2/Cluster/DCPowerSave.pm" \
+    "$PERL_DIR/PVE/API2/Nodes/DCPowerSave.pm" \
+    "$PVE_MANAGER_DIR/js/dc-powersave.js" \
+    "$root/etc/systemd/system/$SERVICE"
+rm -rf -- "$PERL_DIR/PVE/DC/PowerSave" "$LIB_DIR"
+rmdir --ignore-fail-on-non-empty "$PERL_DIR/PVE/DC" 2>/dev/null || true
 systemctl daemon-reload
 systemctl reset-failed "$SERVICE" 2>/dev/null || true
 
@@ -85,7 +159,10 @@ fi
 
 echo
 echo "Removed pve-dc-powersave from this node."
-governors="$(cat /sys/devices/system/cpu/cpufreq/policy*/scaling_governor 2>/dev/null | sort | uniq -c | xargs)" || true
+governors="$(cat "$root"/sys/devices/system/cpu/cpufreq/policy*/scaling_governor 2>/dev/null | sort | uniq -c | xargs)" || true
 echo "Current governors (count name): ${governors:-unknown}"
-echo "Backups of the edited PVE files (*.dc-powersave.backup.*) were left in place."
+echo "Backups of the edited PVE files were kept in $BACKUP_DIR (older versions left"
+echo "*.dc-powersave.backup.* copies next to the PVE files). They are for inspection only:"
+echo "never restore one after a PVE upgrade, it would downgrade PVE's API. Delete them"
+echo "yourself when no longer needed."
 echo "linux-cpupower was not removed. Refresh the browser to drop the Power Management page."
