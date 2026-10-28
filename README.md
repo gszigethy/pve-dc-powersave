@@ -61,7 +61,7 @@ or report status.
 | Safety reconciliation | 30 s | Full check even when no task change is seen. |
 | Task poll | 2 s | How quickly task changes can wake the controller. |
 | Idle candidate delay | 5 s | Time a node must remain empty before the final check. |
-| Boot protection | 120 s | Active period after service start. |
+| Boot protection | 120 s | Active period after service start (the daemon) or after system boot (`--once`). |
 
 Governors are checked on **every CPU frequency policy** on each node. The
 controller reads the actual governor back after a change. Missing or uncertain
@@ -84,6 +84,15 @@ CLI remains useful for diagnostics:
 pve-dc-powersave --once --verbose
 journalctl -u pve-dc-powersave.service -n 50 --no-pager
 ```
+
+`--once` runs one reconciliation (add `--verbose` to log the result) without
+disturbing a node the service has already settled. It counts boot protection
+from system boot instead of from its own start, and a node that the service
+published as `IDLE` within the last `max(2 x safety reconciliation + 15, 120)`
+seconds stays idle: the idle delay it already served counts. In every other
+case an empty node first reports `IDLE_CANDIDATE`; `--once` then waits the
+idle candidate delay and reconciles one more time, and reports that second
+result. It writes `status.json` like the service does.
 
 `--once` exits with status 2 when the node ends in `ERROR`, and with status 1
 without reconciling when the service is reconciling at that moment.

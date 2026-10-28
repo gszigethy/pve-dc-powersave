@@ -2,6 +2,56 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- An empty, whitespace-only, comments-only or truncated
+  `/etc/pve/dc-powersave.cfg` no longer reads as "disabled" on every node.
+  A file without a valid `enabled` line puts the node in `ERROR` on the
+  failsafe governor and the status says why. A missing file still means the
+  unmanaged defaults.
+- A setting this version does not know is now a warning instead of an error,
+  so a node that writes a new setting no longer pushes every older node into
+  `ERROR` during a rolling upgrade. Saving the policy keeps such lines, and
+  `status.json` lists them as `configuration_warnings`.
+- A valid `enabled: 0` is honoured as `DISABLED` even when other lines in the
+  file are invalid; the ignored problems are listed in
+  `configuration_warnings`. With `enabled: 1` an invalid line is still an
+  `ERROR`.
+- A `pvesh` or `cpupower` call that ignores `SIGTERM` can no longer freeze the
+  controller while it holds the lock. The command runs in its own process
+  group and gets `SIGTERM`, then `SIGKILL`, so a call returns within its time
+  limit plus about 4 seconds, and a stuck grandchild no longer keeps the pipes
+  open.
+- A task change or configuration change that arrives while the lock is busy
+  (for example during `pve-dc-powersave --once`) or while a reconciliation
+  fails is no longer dropped until the next timer. The controller retries
+  after the poll interval, backing off up to the reconciliation interval.
+- `pve-dc-powersave --once` no longer switches an idle node to the active
+  governor or reports it as `ACTIVE`: it counts boot protection from system
+  boot, and a node the service published as `IDLE` stays idle. A node that is
+  not yet idle waits one idle candidate delay and is reconciled a second time.
+- When the requested governor cannot be applied, the failsafe governor is
+  now read back as well. The status names the governor that is requested and
+  the governors the node actually runs, and a failsafe that fails adds an
+  error.
+- A short task seen while the controller confirms an idle transition no longer
+  lets the next reconciliation skip the idle candidate delay.
+- `last_error` keeps configuration, runtime and CPU governor problems side by
+  side, joined with `; `, instead of the last one hiding the others, and
+  names a governor that is both requested and failsafe once.
+
+### Changed
+
+- Boot protection, the idle candidate delay, retry backoff and the time limit
+  of every subprocess use the monotonic clock, so a clock step at boot (for
+  example NTP correcting the hardware clock) cannot shorten or stretch them.
+  Timestamps in `status.json` stay in epoch seconds.
+- `pve-dc-powersave --once` counts boot protection from system boot, not from
+  its own start, and may take one extra pass of `idle_candidate_delay` before
+  it reports. Exit codes are unchanged.
+
 ## [0.3.0] - 2026-10-20
 
 ### Added
