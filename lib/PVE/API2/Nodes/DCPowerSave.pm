@@ -7,6 +7,9 @@ use PVE::RESTHandler;
 use PVE::JSONSchema qw(get_standard_option);
 use base qw(PVE::RESTHandler);
 
+# The controller's runtime directory. Tests point this at a temporary one.
+our $RUN_DIR = '/run/pve-dc-powersave';
+
 my $node_property = { node => get_standard_option('pve-node') };
 
 __PACKAGE__->register_method({
@@ -17,12 +20,12 @@ __PACKAGE__->register_method({
     returns => { type => 'object', additionalProperties => 1 },
     code => sub {
         my ($param) = @_;
-        my $path = '/run/pve-dc-powersave/status.json';
+        my $path = "$RUN_DIR/status.json";
         return { node => $param->{node}, state => 'ERROR', reason => 'service_not_reporting' } if !-r $path;
         open(my $fh, '<', $path) or die "cannot read status: $!\n";
         local $/ = undef; my $raw = <$fh>; close($fh);
         my $status = decode_json($raw);
-        my $age = time - ($status->{last_reconciliation} || 0);
+        my $age = int(time - ($status->{last_reconciliation} || 0));
         my $stale_after = 2 * ($status->{reconciliation_interval} || 30) + 15;
         $stale_after = 120 if $stale_after < 120;
         if ($age > $stale_after) {
@@ -41,8 +44,8 @@ __PACKAGE__->register_method({
     parameters => { additionalProperties => 0, properties => $node_property },
     returns => { type => 'null' },
     code => sub {
-        mkdir('/run/pve-dc-powersave', 0755) if !-d '/run/pve-dc-powersave';
-        my $path = '/run/pve-dc-powersave/reconcile.request';
+        mkdir($RUN_DIR, 0755) if !-d $RUN_DIR;
+        my $path = "$RUN_DIR/reconcile.request";
         open(my $fh, '>', $path) or die "cannot request reconciliation: $!\n";
         print {$fh} time . ":$$\n";
         close($fh);
