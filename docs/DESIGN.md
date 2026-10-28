@@ -208,7 +208,7 @@ adds small registrations to the Proxmox API modules and web template. Before
 each edit it copies the file to `/var/lib/pve-dc-powersave/backups/` (the newest
 five per file are kept; they are for inspection, never for restoring after an
 upgrade). The helper finds the files in Perl's `@INC` without loading them and
-compiles each edited file before it gives the API daemons a graceful
+compiles each edited Perl module before it gives the API daemons a graceful
 `reload-or-restart`; on failure it restores the files from its backups.
 Removal takes the registrations out before the files they load are deleted, and
 the uninstaller verifies this independently of the helper. A `pve-manager`

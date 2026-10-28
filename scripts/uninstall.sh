@@ -73,8 +73,10 @@ if [[ ! -f "$helper" ]] || ! supports_remove "$helper"; then
         echo "Helpers installed by v0.2.1-beta.1 or older ignore --remove and would leave the"
         echo "PVE registrations in place; deleting the plugin files then breaks pvedaemon and"
         echo "pveproxy at their next restart."
-        echo "Run uninstall.sh from a v0.3.0-or-newer source tree or release archive"
-        echo "(scripts/uninstall.sh), which carries its own helper. Nothing was changed."
+        echo "Either run scripts/uninstall.sh from a complete source tree or release archive"
+        echo "of this release or newer, which uses the helper next to it, or first rerun this"
+        echo "release's installer on the node (it installs the current helper and uninstaller)"
+        echo "and then run /usr/lib/pve-dc-powersave/uninstall.sh. Nothing was changed."
     } >&2
     exit 1
 fi

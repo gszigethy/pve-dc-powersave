@@ -91,8 +91,8 @@ without reconciling when the service is reconciling at that moment.
 ## Proxmox upgrades and removal
 
 Proxmox does not expose a general third-party UI/API plugin loader for this
-feature. The installer makes small registrations in Proxmox's API
-modules and web template and keeps backups of the files it edits (see below). A `pve-manager` package upgrade may replace those
+feature. The installer makes small, backed-up registrations in Proxmox's API
+modules and web template. A `pve-manager` package upgrade may replace those
 registrations. **Rerun the installer on every node after a PVE upgrade**, then
 refresh the browser and check the Power Management page. The installer keeps
 the shared configuration and is idempotent.
@@ -119,12 +119,14 @@ should only do on the last node.
 
 The uninstaller refuses to continue, before it changes anything, when the only
 integration helper it can find predates removal support. This is the case on a
-node installed with 0.2.1-beta.1 or older. Run `uninstall.sh` from a
-v0.3.0-or-newer source checkout or release archive instead
-(`scripts/uninstall.sh`); it uses the helper next to it. If a registration
-cannot be removed, the uninstaller stops without deleting the modules and lists
-what is left, because removing the modules while PVE still loads them stops
-`pvedaemon` and `pveproxy` from starting.
+node installed with 0.2.1-beta.1 or older. Either run `scripts/uninstall.sh`
+from a complete source tree or release archive of this release or newer, which
+uses the helper next to it, or first rerun this release's installer on the node
+(it installs the current helper and uninstaller) and then run
+`/usr/lib/pve-dc-powersave/uninstall.sh`. If a registration cannot be removed,
+the uninstaller stops without deleting the modules and lists what is left,
+because removing the modules while PVE still loads them stops `pvedaemon` and
+`pveproxy` from starting.
 
 Backups of the edited PVE files are kept in
 `/var/lib/pve-dc-powersave/backups/` (mode 0700, the newest five per file; the

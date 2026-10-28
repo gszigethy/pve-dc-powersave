@@ -118,7 +118,8 @@ class UninstallShTests(unittest.TestCase):
         result = self.run_script(installed_script)
 
         self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertIn("v0.3.0-or-newer", result.stderr)
+        self.assertIn("complete source tree or release archive", result.stderr)
+        self.assertIn("rerun this", result.stderr)
         self.assertFalse(self.helper_log.exists(), "the old helper must never be executed")
         self.assertEqual(self.commands(), "", "service must not be touched")
         self.assertTrue(all(p.exists() for p in self.plugin_files))

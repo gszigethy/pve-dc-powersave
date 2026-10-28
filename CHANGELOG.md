@@ -8,12 +8,10 @@ All notable changes to this project are documented here.
 
 - Uninstalling a node that was installed with 0.2.1-beta.1 or older no longer
   deletes the plugin modules while PVE still loads them, which stopped
-  `pvedaemon` and `pveproxy` at their next restart. Those versions installed a
-  helper that ignores `--remove`; the uninstaller now only runs a helper whose
-  source supports removal, prefers the one next to it, and otherwise stops
-  before changing anything and tells you to run `uninstall.sh` from a v0.3.0 or
-  newer source tree or release archive. After removal it checks that no
-  registration is left and keeps the modules if one is.
+  `pvedaemon` and `pveproxy` at their next restart. The uninstaller never runs
+  an integration helper that ignores `--remove`, checks that every
+  registration is gone before it deletes anything, and stops before changing
+  anything, with instructions, when it finds no suitable helper.
 - `integrate-pve.py --remove` now repairs a node whose plugin modules are
   already missing. It finds `Cluster.pm` and `Nodes.pm` in Perl's `@INC`
   without loading them, and Perl's own error message is shown when a Perl
