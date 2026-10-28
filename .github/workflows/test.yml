@@ -88,6 +88,9 @@ jobs:
       - name: JavaScript syntax
         run: node --check web/dc-powersave.js
 
+      - name: JavaScript tests
+        run: node --test 'web/tests/*.test.js'
+
       - name: Validate systemd unit in isolated CI root
         run: |
           UNIT_ROOT=$(mktemp -d "$RUNNER_TEMP/pve-unit.XXXXXX")

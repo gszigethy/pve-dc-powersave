@@ -2,14 +2,101 @@
 (function () {
     'use strict';
     var driverHelpUrl = 'https://github.com/gszigethy/pve-dc-powersave/blob/main/docs/INTEL-PSTATE.md';
+    var GOVERNOR_KEYS = ['active_governor', 'idle_governor', 'migration_governor', 'failsafe_governor'];
+    var NOT_INSTALLED_HINT = 'Rerun the installer on this node: a pve-manager upgrade removes the registration.';
+    var STATUS_HINT = 'Double click a node for prerequisites and CPU policies';
 
+    // Pure helpers, exposed for the tests in web/tests/.
+    var ns = {
+        GOVERNOR_KEYS: GOVERNOR_KEYS,
+
+        // Whether the signed-in user holds a datacenter privilege.
+        hasCap: function (privilege) {
+            try {
+                var caps = Ext.state.Manager.get('GuiCap');
+                return !!(caps && caps.dc && caps.dc[privilege]);
+            } catch (e) {
+                return false;
+            }
+        },
+
+        isGone: function (panel) {
+            return !panel || !!panel.destroyed || !!panel.isDestroyed;
+        },
+
+        // A readable one-line reason for a failed Ext.Ajax response.
+        describeFailure: function (response) {
+            response = response || {};
+            var message = response.statusText || 'Request failed';
+            try { message = Ext.decode(response.responseText).message || message; } catch (e) { /* keep HTTP error */ }
+            return (response.status > 0 ? 'HTTP ' + response.status + ': ' : '') + message;
+        },
+
+        // PVE answers an unregistered API path with 501 (404 is kept as
+        // well): the plugin registration is gone from this node.
+        nodeFailure: function (response) {
+            var status = response && response.status;
+            if (status === 501 || status === 404) {
+                return { reason: 'plugin_not_installed', last_error: NOT_INSTALLED_HINT };
+            }
+            return { reason: 'status_unavailable', last_error: response && response.statusText };
+        },
+
+        // Decide what a save sends and whether it needs the capability
+        // report. Mirrors the server: capabilities only matter when the
+        // update turns the policy on or changes a governor of an enabled
+        // one, so interval changes and disabling work with a node down.
+        planSave: function (values, loaded, capabilities) {
+            var out = Ext.apply({}, values);
+            out.enabled = values.enabled ? 1 : 0;
+            if (loaded) {
+                GOVERNOR_KEYS.forEach(function (key) { out[key] = out[key] || loaded[key]; });
+            }
+            var wasEnabled = !!loaded && !loaded.configuration_error && Number(loaded.enabled) === 1;
+            var changed = !wasEnabled || GOVERNOR_KEYS.some(function (key) { return out[key] !== loaded[key]; });
+            var plan = { values: out, needsCheck: !!out.enabled && changed, error: null };
+            if (plan.needsCheck && (!capabilities || !capabilities.complete)) {
+                plan.error = 'Every node must report fresh CPU governor capabilities before the policy can be enabled.';
+            } else if (plan.needsCheck && !(capabilities.common_governors || []).length) {
+                plan.error = 'No common CPU governor is available across all nodes. See the Intel P-state setup guide.';
+            }
+            return plan;
+        },
+
+        // Wrap PVE.panel.Config.initComponent. The wrapper must never throw
+        // and must call the original exactly once for every kind of config
+        // panel (node, VM, CT, storage, datacenter): a failure in this
+        // plugin may cost the Power Management card, never another panel.
+        wrapConfigInit: function (original) {
+            return function () {
+                try {
+                    var datacenter = typeof PVE.dc !== 'undefined' && PVE.dc.Config;
+                    if (datacenter && this instanceof PVE.dc.Config && ns.hasCap('Sys.Audit')) {
+                        if (Array.isArray(this.items)) {
+                            this.items.push({
+                                xtype: 'pveDcPowerManagement', title: 'Power Management',
+                                iconCls: 'fa fa-bolt', itemId: 'power-management',
+                            });
+                        } else {
+                            console.warn('pve-dc-powersave: datacenter panel has no items list; Power Management card skipped');
+                        }
+                    }
+                } catch (e) {
+                    console.warn('pve-dc-powersave: cannot add the Power Management card', e);
+                }
+                return original.apply(this, arguments);
+            };
+        },
+    };
+    PVE.DCPowerSave = ns;
+
+    // User-initiated requests report failures in a dialog. Background
+    // refreshes pass their own failure handler and stay inline.
     function request(options) {
         Ext.Ajax.request(Ext.apply({
             headers: { CSRFPreventionToken: Proxmox.CSRFPreventionToken },
             failure: function (response) {
-                var message = response.statusText || 'Request failed';
-                try { message = Ext.decode(response.responseText).message || message; } catch (e) { /* keep HTTP error */ }
-                Ext.Msg.alert('Power Management', Ext.String.htmlEncode(message));
+                Ext.Msg.alert('Power Management', Ext.String.htmlEncode(ns.describeFailure(response)));
             },
         }, options));
     }
@@ -54,7 +141,7 @@
                 buttons: [
                     { text: 'Reload policy', handler: function () { me.loadConfig(); } },
                     { text: 'Save cluster policy', iconCls: 'fa fa-save',
-                        disabled: !Ext.state.Manager.get('GuiCap').dc['Sys.Modify'],
+                        disabled: !ns.hasCap('Sys.Modify'),
                         handler: function () { me.saveConfig(); } },
                 ],
             });
@@ -68,6 +155,7 @@
                     'running_ct_count', 'protected', 'reason', 'last_error', 'prerequisites'],
                 sorters: ['node'],
             });
+            me.statusInfo = Ext.create('Ext.toolbar.TextItem', { text: STATUS_HINT });
             me.statusGrid = Ext.create('Ext.grid.Panel', {
                 title: 'Node status',
                 flex: 1,
@@ -87,9 +175,10 @@
                 ],
                 tbar: [
                     { text: 'Refresh', iconCls: 'fa fa-refresh', handler: function () { me.loadCapabilities(); me.loadStatus(); } },
-                    { text: 'Reconcile selected', handler: function () { me.reconcileSelected(); } },
-                    { text: 'Reconcile all', handler: function () { me.reconcileAll(); } },
-                    '->', { xtype: 'tbtext', text: 'Double click a node for prerequisites and CPU policies' },
+                    // Requesting a reconciliation needs Sys.Modify.
+                    { text: 'Reconcile selected', hidden: !ns.hasCap('Sys.Modify'), handler: function () { me.reconcileSelected(); } },
+                    { text: 'Reconcile all', hidden: !ns.hasCap('Sys.Modify'), handler: function () { me.reconcileAll(); } },
+                    '->', me.statusInfo,
                 ],
                 listeners: {
                     itemdblclick: function (grid, record) {
@@ -113,10 +202,12 @@
                 me.loadConfig(); me.loadCapabilities(); me.loadStatus();
                 // Capability discovery runs pvesh on every node, so it is not
                 // polled: it reloads on show, Refresh, and after a save.
+                // The timer must not also fire when it starts: the status
+                // was just loaded above.
                 if (!me.refreshTask) {
                     me.refreshTask = Ext.TaskManager.start({ run: function () {
-                        if (!me.destroyed && me.isVisible()) { me.loadStatus(); }
-                    }, interval: 15000 });
+                        if (!ns.isGone(me) && me.isVisible()) { me.loadStatus(); }
+                    }, interval: 15000, fireOnStart: false });
                 }
             });
             me.on('destroy', function () { if (me.refreshTask) { Ext.TaskManager.stop(me.refreshTask); } });
@@ -129,6 +220,7 @@
             request({ url: '/api2/json/cluster/power-management/capabilities', method: 'GET',
                 success: function (response) {
                     me.capabilitiesLoading = false;
+                    if (ns.isGone(me)) { return; }
                     var data = Ext.decode(response.responseText).data;
                     me.clusterCapabilities = data;
                     me.commonGovernorStore.loadData((data.common_governors || []).map(function (governor) {
@@ -156,10 +248,11 @@
                 },
                 failure: function (response) {
                     me.capabilitiesLoading = false;
+                    if (ns.isGone(me)) { return; }
                     me.clusterCapabilities = { complete: false, common_governors: [] };
                     me.commonGovernorStore.removeAll();
                     me.capabilityNotice.update('<strong>Cluster governor discovery failed.</strong> '
-                        + Ext.String.htmlEncode(response.statusText || 'Capability endpoint unavailable')
+                        + Ext.String.htmlEncode(ns.describeFailure(response))
                         + ' Power management cannot be enabled.');
                 },
             });
@@ -169,6 +262,7 @@
             var me = this;
             request({ url: '/api2/json/cluster/power-management', method: 'GET',
                 success: function (response) {
+                    if (ns.isGone(me)) { return; }
                     var data = Ext.decode(response.responseText).data;
                     me.digest = data.digest;
                     me.loadedConfig = data;
@@ -190,7 +284,7 @@
             var me = this;
             var form = me.configForm.getForm();
             if (!me.loadedConfig) { return; }
-            ['active_governor', 'idle_governor', 'migration_governor', 'failsafe_governor'].forEach(function (key) {
+            GOVERNOR_KEYS.forEach(function (key) {
                 var field = form.findField(key);
                 var value = me.loadedConfig[key];
                 if (!field.getValue() && value && me.commonGovernorStore.findExact('name', value) !== -1) {
@@ -205,23 +299,19 @@
             var form = me.configForm.getForm();
             var values = form.getValues();
             values.enabled = form.findField('enabled').getValue() ? 1 : 0;
-            if (!values.enabled && me.loadedConfig) {
-                ['active_governor', 'idle_governor', 'migration_governor', 'failsafe_governor'].forEach(function (key) {
-                    values[key] = values[key] || me.loadedConfig[key];
-                });
-            }
-            if (values.enabled && (!me.clusterCapabilities || !me.clusterCapabilities.complete)) {
-                Ext.Msg.alert('Power Management', 'Every node must report fresh CPU governor capabilities before the policy can be enabled.');
+            var plan = ns.planSave(values, me.loadedConfig, me.clusterCapabilities);
+            if (plan.error) {
+                Ext.Msg.alert('Power Management', plan.error);
                 return;
             }
-            if (values.enabled && !(me.clusterCapabilities.common_governors || []).length) {
-                Ext.Msg.alert('Power Management', 'No common CPU governor is available across all nodes. See the Intel P-state setup guide.');
-                return;
-            }
-            if (values.enabled && !form.isValid()) { return; }
-            values.digest = me.digest;
-            request({ url: '/api2/json/cluster/power-management', method: 'PUT', params: values,
+            // Disabling, and changes that leave the governors of an enabled
+            // policy alone, do not need the governor combos (they are empty
+            // while a node cannot report its capabilities).
+            if (plan.values.enabled && !me.formValid(plan.needsCheck)) { return; }
+            plan.values.digest = me.digest;
+            request({ url: '/api2/json/cluster/power-management', method: 'PUT', params: plan.values,
                 success: function (response) {
+                    if (ns.isGone(me)) { return; }
                     var saved = Ext.decode(response.responseText).data;
                     me.digest = saved.digest;
                     me.loadedConfig = saved;
@@ -232,16 +322,34 @@
             });
         },
 
+        formValid: function (includeGovernors) {
+            return this.configForm.getForm().getFields().getRange().every(function (field) {
+                return (!includeGovernors && GOVERNOR_KEYS.indexOf(field.getName()) !== -1) || field.isValid();
+            });
+        },
+
+        // Background refreshes report failures inline (toolbar text), never
+        // in a dialog: an expired login or a pveproxy restart would
+        // otherwise pop an alert every 15 seconds. The next success clears it.
+        showStatusError: function (response) {
+            this.statusInfo.setText(Ext.String.htmlEncode('Status refresh failed: ' + ns.describeFailure(response)
+                + '. Showing the last known state; retrying automatically.'));
+        },
+        clearStatusError: function () {
+            this.statusInfo.setText(STATUS_HINT);
+        },
+
         loadStatus: function () {
             var me = this;
-            // Refreshes overlap (timer, buttons, one deferred reload per node
-            // after Reconcile all). Only the newest sweep may write rows, or
-            // late replies from an older sweep duplicate nodes.
+            // Refreshes overlap (timer, buttons, one deferred reload after
+            // Reconcile all). Only the newest sweep may write rows, or late
+            // replies from an older sweep duplicate nodes.
             var generation = me.statusGeneration = (me.statusGeneration || 0) + 1;
-            function current() { return !me.destroyed && generation === me.statusGeneration; }
+            function current() { return !ns.isGone(me) && generation === me.statusGeneration; }
             request({ url: '/api2/json/cluster/status', method: 'GET',
                 success: function (response) {
                     if (!current()) { return; }
+                    me.clearStatusError();
                     var nodes = Ext.decode(response.responseText).data.filter(function (entry) { return entry.type === 'node'; });
                     me.statusStore.removeAll();
                     nodes.forEach(function (node) {
@@ -255,12 +363,13 @@
                             },
                             failure: function (result) {
                                 if (!current()) { return; }
-                                me.statusStore.add({ node: node.name, state: 'ERROR',
-                                    reason: result.status === 404 ? 'plugin_not_installed' : 'status_unavailable',
-                                    last_error: result.statusText });
+                                me.statusStore.add(Ext.apply({ node: node.name, state: 'ERROR' }, ns.nodeFailure(result)));
                             },
                         });
                     });
+                },
+                failure: function (response) {
+                    if (current()) { me.showStatusError(response); }
                 },
             });
         },
@@ -269,32 +378,45 @@
             var selected = this.statusGrid.getSelectionModel().getSelection();
             if (selected.length) { this.reconcileNode(selected[0].get('node')); }
         },
-        reconcileNode: function (node) {
+        // Returns after posting; the caller decides when to reload the status.
+        reconcileNode: function (node, done) {
             var me = this;
+            if (!ns.hasCap('Sys.Modify')) { return; }
             request({ url: '/api2/json/nodes/' + encodeURIComponent(node) + '/power-management/reconcile', method: 'POST',
-                success: function () { Ext.defer(function () { me.loadStatus(); }, 2500); },
+                success: function () { if (done) { done(); } else { me.reloadStatusSoon(); } },
+                failure: function (response) {
+                    if (done) { done(); }
+                    if (!ns.isGone(me)) {
+                        Ext.Msg.alert('Power Management', Ext.String.htmlEncode(node + ': ' + ns.describeFailure(response)));
+                    }
+                },
             });
+        },
+        reloadStatusSoon: function () {
+            var me = this;
+            Ext.defer(function () { if (!ns.isGone(me)) { me.loadStatus(); } }, 2500);
         },
         reconcileAll: function () {
             var me = this;
+            var pending = 0;
+            function done() { if (--pending === 0) { me.reloadStatusSoon(); } }
+            var nodes = [];
             me.statusStore.each(function (record) {
-                if (record.get('reason') !== 'node_offline') { me.reconcileNode(record.get('node')); }
+                if (record.get('reason') !== 'node_offline') { nodes.push(record.get('node')); }
             });
+            pending = nodes.length;
+            nodes.forEach(function (node) { me.reconcileNode(node, done); });
         },
     });
 
     // The existing config panel builds its navigation tree in the base
     // initComponent. Insert the new declarative card just before that step.
-    var original = PVE.panel.Config.prototype.initComponent;
-    PVE.panel.Config.override({
-        initComponent: function () {
-            if (this instanceof PVE.dc.Config && Ext.state.Manager.get('GuiCap').dc['Sys.Audit']) {
-                this.items.push({
-                    xtype: 'pveDcPowerManagement', title: 'Power Management',
-                    iconCls: 'fa fa-bolt', itemId: 'power-management',
-                });
-            }
-            return original.apply(this, arguments);
-        },
-    });
+    // Anything missing from this PVE version only costs the card.
+    if (typeof PVE.panel !== 'undefined' && PVE.panel.Config) {
+        PVE.panel.Config.override({
+            initComponent: ns.wrapConfigInit(PVE.panel.Config.prototype.initComponent),
+        });
+    } else {
+        console.warn('pve-dc-powersave: PVE.panel.Config not found; Power Management card not added');
+    }
 }());
