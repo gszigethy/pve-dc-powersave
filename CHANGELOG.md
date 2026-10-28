@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+### Security
+
+- A mistyped `--from-dir` no longer falls back to downloading `main` and
+  running it as root. The directory must be a complete source tree, or the
+  installer exits without downloading anything. `--from-dir` cannot be
+  combined with `--ref` or `--repo`, and an explicit `--ref` is honoured even
+  when the script is run from a checkout.
+
+### Fixed
+
+- The installer compile-checks every module and the daemon against the node's
+  own Proxmox libraries before replacing any installed file. If a later step
+  fails, it restores the previous files (or removes a failed fresh install),
+  reloads systemd and the API daemons, and exits non-zero, instead of leaving
+  a module that `pvedaemon` and `pveproxy` cannot load. A failure to start
+  only the controller service keeps the installed files and says so.
+- The installer installs `linux-cpupower` and `python3` only when they are
+  missing, so an unreachable repository (such as the enterprise repository
+  without a subscription) no longer stops it. When a package is missing, a
+  failing `apt-get update` is a warning.
+- The installer works on a node without quorum: it warns that it could not
+  create `/etc/pve/dc-powersave.cfg` and continues. The default configuration
+  is written as a temporary file and renamed into place, so no node reads a
+  half-written file.
+
+### Changed
+
+- The installer installs every `lib/PVE/DC/PowerSave/*.pm` module and replaces
+  the module directory as a whole, so modules removed in a newer version do
+  not stay behind.
+
 ## [0.3.0] - 2026-10-20
 
 ### Added
