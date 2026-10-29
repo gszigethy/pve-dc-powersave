@@ -378,3 +378,20 @@ node ended in `ERROR`.
 Disable the plugin by setting `enabled: 0`; it becomes unmanaged and will not
 make further governor changes. Use your normal host-management method if you
 need to restore a governor manually.
+
+## Known limitations
+
+- Disabling the policy, stopping the service, a crash, or uninstalling without
+  `--governor` leaves an idle node at its minimum clock until you set a
+  governor yourself.
+- There is no per-node opt-out. Nodes that run storage services (Ceph, NFS,
+  Gluster, iSCSI target, Proxmox Backup Server) stay active, but `radosgw` and
+  `smbd` are not in that list.
+- A `pve-manager` upgrade can remove the API registrations. Rerun the installer
+  on every node afterwards.
+- Every node reconciles on the same schedule, so their task queries are not
+  staggered.
+- Configuration warnings (unknown keys) appear in the node status but not in
+  the Cluster API or the web UI.
+- Nothing here has been run against a live Proxmox cluster; the test suites
+  fake the system commands. Try a release on one node first.

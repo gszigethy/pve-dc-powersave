@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here.
 
-## [Unreleased]
+## [0.4.0-beta.1] - 2026-10-29
 
 ### Added
 
@@ -21,13 +21,11 @@ All notable changes to this project are documented here.
   is the only one allowed to write.
 - CI and release checkouts no longer keep the repository token in
   `.git/config`.
-
 - A mistyped `--from-dir` no longer falls back to downloading `main` and
   running it as root. The directory must be a complete source tree, or the
   installer exits without downloading anything. `--from-dir` cannot be
   combined with `--ref` or `--repo`, and an explicit `--ref` is honoured even
   when the script is run from a checkout.
-
 - Capability discovery is cached for about 10 seconds in
   `/run/pve-dc-powersave` and computed by one request at a time. Users with
   only `Sys.Audit` could previously start any number of discoveries, each
@@ -50,7 +48,6 @@ All notable changes to this project are documented here.
 - The helper reloads `pvedaemon` and `pveproxy` (`systemctl reload-or-restart`)
   instead of hard-restarting them, including when it rolls a failed edit back.
   Running API workers are no longer killed.
-
 - The installer compile-checks every module and the daemon against the node's
   own Proxmox libraries before replacing any installed file. If a later step
   fails, it restores the previous files (or removes a failed fresh install),
@@ -69,7 +66,6 @@ All notable changes to this project are documented here.
   runtime directory is kept across restarts (a real stop still removes it),
   so the Nodes API no longer reports `service_not_reporting` and policy saves
   are no longer refused while the service restarts.
-
 - An empty, whitespace-only, comments-only or truncated
   `/etc/pve/dc-powersave.cfg` no longer reads as "disabled" on every node.
   A file without a valid `enabled` line puts the node in `ERROR` on the
@@ -105,7 +101,6 @@ All notable changes to this project are documented here.
 - `last_error` keeps configuration, runtime and CPU governor problems side by
   side, joined with `; `, instead of the last one hiding the others, and
   names a governor that is both requested and failsafe once.
-
 - Storage removals (`dirremove`, `lvmremove`, `zfsremove`, ...), disk moves
   (`qmmove`, `move_volume`) and HA `hastart`/`hastop` tasks no longer put
   every node on the migration governor. Only `qmigrate`, `vzmigrate`,
@@ -118,7 +113,6 @@ All notable changes to this project are documented here.
   nodes stay on the active governor with reason `task_state_unknown`, the
   status names the unreachable member in `task_state_detail`, and the member
   is not queried again for 60 seconds.
-
 - Interval changes and disabling are no longer refused because one node is
   down or was just upgraded. Capabilities are checked only when a save turns
   the policy on or changes a governor of an enabled policy.
@@ -149,7 +143,6 @@ All notable changes to this project are documented here.
   a PVE upgrade. The uninstaller keeps them and tells you where they are.
 - The uninstaller removes `/run/pve-dc-powersave` after stopping the service,
   but only when it is a real directory and not a symlink.
-
 - The service never hits systemd's start limit and, on systemd 254 or newer
   (Proxmox VE 9), backs off from 3 seconds to 5 minutes while it keeps
   failing. Proxmox VE 8 (systemd 252) ignores the two new keys and logs an
@@ -157,7 +150,6 @@ All notable changes to this project are documented here.
 - The installer installs every `lib/PVE/DC/PowerSave/*.pm` module and replaces
   the module directory as a whole, so modules removed in a newer version do
   not stay behind.
-
 - Boot protection, the idle candidate delay, retry backoff and the time limit
   of every subprocess use the monotonic clock, so a clock step at boot (for
   example NTP correcting the hardware clock) cannot shorten or stretch them.
@@ -165,7 +157,6 @@ All notable changes to this project are documented here.
 - `pve-dc-powersave --once` counts boot protection from system boot, not from
   its own start, and may take one extra pass of `idle_candidate_delay` before
   it reports. Exit codes are unchanged.
-
 - A node that runs storage services (`ceph-osd`, `ceph-mon`, `ceph-mds`,
   `nfsd`, `glusterfsd`, `tgtd`, `proxmox-backup-proxy`) stays on the active
   governor with reason `storage_service`, and the status lists them in
