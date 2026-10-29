@@ -91,6 +91,19 @@ All notable changes to this project are documented here.
   side, joined with `; `, instead of the last one hiding the others, and
   names a governor that is both requested and failsafe once.
 
+- Storage removals (`dirremove`, `lvmremove`, `zfsremove`, ...), disk moves
+  (`qmmove`, `move_volume`) and HA `hastart`/`hastop` tasks no longer put
+  every node on the migration governor. Only `qmigrate`, `vzmigrate`,
+  `migrateall`, `hamigrate`, `harelocate` and other migration task types do;
+  other work protects just the node that runs it.
+- A guest start that begins and ends between two task polls is noticed within
+  seconds instead of at the next safety reconciliation. Finished tasks now
+  change the wake-up fingerprint too.
+- One unreachable cluster node no longer puts every node into `ERROR`. The
+  nodes stay on the active governor with reason `task_state_unknown`, the
+  status names the unreachable member in `task_state_detail`, and the member
+  is not queried again for 60 seconds.
+
 ### Changed
 
 - Backups of `Cluster.pm`, `Nodes.pm` and `index.html.tpl` now live in
@@ -117,6 +130,16 @@ All notable changes to this project are documented here.
 - `pve-dc-powersave --once` counts boot protection from system boot, not from
   its own start, and may take one extra pass of `idle_candidate_delay` before
   it reports. Exit codes are unchanged.
+
+- A node that runs storage services (`ceph-osd`, `ceph-mon`, `ceph-mds`,
+  `nfsd`, `glusterfsd`, `tgtd`, `proxmox-backup-proxy`) stays on the active
+  governor with reason `storage_service`, and the status lists them in
+  `storage_services`. Ceph, NFS and Proxmox Backup Server nodes therefore no
+  longer idle at all.
+- Each reconciliation starts fewer `pvesh` processes: the other nodes' active
+  task lists are only fetched when the node could otherwise become idle.
+- Opening or closing a console, and tasks on other nodes that are not
+  migrations, no longer trigger a reconciliation on every node.
 
 ## [0.3.0] - 2026-10-20
 
