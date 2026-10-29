@@ -26,12 +26,44 @@ machine and migration rules.
 
    ```sh
    bash scripts/install.sh --from-dir .
+   bash scripts/install.sh --ref v0.3.0
    ```
 
+   `--from-dir DIR` installs a local source tree and downloads nothing; it
+   must contain the files the installer needs, or the installer exits without
+   changing anything. `--ref` (and `--repo OWNER/REPOSITORY`) always
+   downloads that ref, even when the script sits in a checkout. The two cannot
+   be combined. With neither option, the installer uses the checkout the
+   script belongs to, or downloads `main` when run from a pipe.
+
+   Before it replaces anything, the installer stages all files in a private
+   temporary directory and compile-checks every Perl module and the daemon
+   against this node's own Proxmox libraries. If one does not compile it
+   prints Perl's error and exits without touching the node. It installs
+   `linux-cpupower` and `python3` only when they are missing; an unreachable
+   package repository (for example the enterprise repository without a
+   subscription) therefore does not matter when nothing is missing. It then
+   backs up the installed files and replaces them, and the module directory is
+   replaced as a whole so modules removed in a newer version do not linger.
+   If a later step fails (`systemctl daemon-reload`, the integration helper,
+   or the `pvedaemon`/`pveproxy` reload and API check), it restores the
+   previous files, removes the registrations of a failed fresh install,
+   reloads what needs it and exits non-zero. If only starting the
+   `pve-dc-powersave` service fails, the files and the API integration are
+   kept, because they are good; the installer reports the failure and exits
+   non-zero, and you rerun it after fixing the cause.
+
 2. The installer creates `/etc/pve/dc-powersave.cfg` with `enabled: 0`. This
-   file is shared by Proxmox across the cluster. It is created once; later
-   installs on other nodes preserve it. The installer restarts `pvedaemon` and
-   `pveproxy` to expose the new UI and API. Refresh your browser after install.
+   file is shared by Proxmox across the cluster. It is created once, as a
+   temporary file that is renamed into place so no node reads a half-written
+   file; later installs on other nodes preserve it. The installer reloads
+   `pvedaemon` and `pveproxy` (gracefully, no restart) to expose the new UI and API. Refresh your
+   browser after install.
+
+   Without quorum `/etc/pve` is read-only. The installer then warns, skips the
+   file and continues; the controller treats a missing file as disabled. Create
+   it later by saving the policy in **Datacenter → Power Management**, or by
+   rerunning the installer on a node that has quorum.
 
 3. Open **Datacenter → Power Management**. Review the cluster policy and each
    node's prerequisites. A node's row shows its state, actual and desired
@@ -95,7 +127,8 @@ feature. The installer makes small, backed-up registrations in Proxmox's API
 modules and web template. A `pve-manager` package upgrade may replace those
 registrations. **Rerun the installer on every node after a PVE upgrade**, then
 refresh the browser and check the Power Management page. The installer keeps
-the shared configuration and is idempotent.
+the shared configuration and is idempotent. If a rerun fails after it has
+started replacing files, it restores the previous ones.
 
 To stop automation immediately, clear **Enabled** in the UI. If the UI is
 unavailable, set `enabled: 0` in `/etc/pve/dc-powersave.cfg` on a quorate node.

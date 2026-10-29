@@ -14,6 +14,12 @@ All notable changes to this project are documented here.
 - CI and release checkouts no longer keep the repository token in
   `.git/config`.
 
+- A mistyped `--from-dir` no longer falls back to downloading `main` and
+  running it as root. The directory must be a complete source tree, or the
+  installer exits without downloading anything. `--from-dir` cannot be
+  combined with `--ref` or `--repo`, and an explicit `--ref` is honoured even
+  when the script is run from a checkout.
+
 ### Fixed
 
 - Uninstalling a node that was installed with 0.2.1-beta.1 or older no longer
@@ -30,6 +36,25 @@ All notable changes to this project are documented here.
   instead of hard-restarting them, including when it rolls a failed edit back.
   Running API workers are no longer killed.
 
+- The installer compile-checks every module and the daemon against the node's
+  own Proxmox libraries before replacing any installed file. If a later step
+  fails, it restores the previous files (or removes a failed fresh install),
+  reloads systemd and the API daemons, and exits non-zero, instead of leaving
+  a module that `pvedaemon` and `pveproxy` cannot load. A failure to start
+  only the controller service keeps the installed files and says so.
+- The installer installs `linux-cpupower` and `python3` only when they are
+  missing, so an unreachable repository (such as the enterprise repository
+  without a subscription) no longer stops it. When a package is missing, a
+  failing `apt-get update` is a warning.
+- The installer works on a node without quorum: it warns that it could not
+  create `/etc/pve/dc-powersave.cfg` and continues. The default configuration
+  is written as a temporary file and renamed into place, so no node reads a
+  half-written file.
+- Node status now survives manual restarts and crashes of the service: the
+  runtime directory is kept across restarts (a real stop still removes it),
+  so the Nodes API no longer reports `service_not_reporting` and policy saves
+  are no longer refused while the service restarts.
+
 ### Changed
 
 - Backups of `Cluster.pm`, `Nodes.pm` and `index.html.tpl` now live in
@@ -40,6 +65,14 @@ All notable changes to this project are documented here.
   a PVE upgrade. The uninstaller keeps them and tells you where they are.
 - The uninstaller removes `/run/pve-dc-powersave` after stopping the service,
   but only when it is a real directory and not a symlink.
+
+- The service never hits systemd's start limit and, on systemd 254 or newer
+  (Proxmox VE 9), backs off from 3 seconds to 5 minutes while it keeps
+  failing. Proxmox VE 8 (systemd 252) ignores the two new keys and logs an
+  "Unknown key" notice at `systemctl daemon-reload`.
+- The installer installs every `lib/PVE/DC/PowerSave/*.pm` module and replaces
+  the module directory as a whole, so modules removed in a newer version do
+  not stay behind.
 
 ## [0.3.0] - 2026-10-20
 

@@ -2,15 +2,30 @@
 Description=Proxmox datacenter CPU power-state controller
 After=pve-cluster.service pvedaemon.service
 Wants=pve-cluster.service
+# Never give up restarting: a node whose controller is down cannot leave the
+# idle governor on its own, so systemd's default start limit (5 starts in
+# 10 s) must not park the unit in "failed".
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStart=/usr/sbin/pve-dc-powersave --verbose
 Restart=always
 RestartSec=3
+# Back off from 3 s up to 5 min in 6 steps while the controller keeps
+# failing, so a broken install does not restart every 3 seconds forever.
+# systemd older than 254 (PVE 8 has 252) does not know these two keys: it
+# ignores them and logs "Unknown key" at daemon-reload and keeps the fixed
+# 3 s delay. PVE 9 (systemd 257) applies them.
+RestartSteps=6
+RestartMaxDelaySec=300
 User=root
 RuntimeDirectory=pve-dc-powersave
 RuntimeDirectoryMode=0755
+# Keep status.json across manual restarts, crashes and automatic restarts so
+# the API does not report the node as not reporting. A real stop still removes
+# the directory, which the Nodes API reports as a stopped service at once.
+RuntimeDirectoryPreserve=restart
 
 [Install]
 WantedBy=multi-user.target
