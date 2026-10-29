@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- `pvesh set /cluster/power-management --enabled 0`, run as `root` on a
+  quorate node, is now the command-line emergency stop. Policy updates accept
+  any subset of the properties (and an optional `digest`) and merge them into
+  the stored policy. If the stored file cannot be read, `--enabled 0` rewrites
+  it with the defaults.
+
 ### Security
 
 - The SonarQube Cloud token is now handed only to the analysis step of the CI
@@ -19,6 +27,13 @@ All notable changes to this project are documented here.
   installer exits without downloading anything. `--from-dir` cannot be
   combined with `--ref` or `--repo`, and an explicit `--ref` is honoured even
   when the script is run from a checkout.
+
+- Capability discovery is cached for about 10 seconds in
+  `/run/pve-dc-powersave` and computed by one request at a time. Users with
+  only `Sys.Audit` could previously start any number of discoveries, each
+  holding one of `pvedaemon`'s three workers while it queried every node.
+  Saving a policy that needs the capability check still uses a report at
+  most 10 seconds old.
 
 ### Fixed
 
@@ -103,6 +118,26 @@ All notable changes to this project are documented here.
   nodes stay on the active governor with reason `task_state_unknown`, the
   status names the unreachable member in `task_state_detail`, and the member
   is not queried again for 60 seconds.
+
+- Interval changes and disabling are no longer refused because one node is
+  down or was just upgraded. Capabilities are checked only when a save turns
+  the policy on or changes a governor of an enabled policy.
+- A node whose Power Management API was removed by a `pve-manager` upgrade now
+  shows as `plugin_not_installed`, with a hint to rerun the installer, in the
+  UI and in the capability report. Proxmox answers 501 there, which the UI
+  treated as a generic status error.
+- A save that timed out in the browser but completed can be retried: the
+  digest is checked before the slow capability check, and a retry whose
+  result is already stored succeeds.
+- The digest returned by a save belongs to that save. It could previously be
+  read after the lock was released and belong to another admin's save.
+- The stale node status message shows whole seconds.
+- A failure in the Power Management page can no longer stop the other
+  Datacenter, node, VM, container and storage panels from loading.
+- A failed status refresh (expired login, `pveproxy` restart) is shown next
+  to the node table and clears itself, instead of opening a dialog every 15
+  seconds. The status loads once when the page is shown, and the Reconcile
+  buttons are hidden for users without `Sys.Modify`.
 
 ### Changed
 
