@@ -18,6 +18,8 @@ All notable changes to this project are documented here.
   `/run/pve-dc-powersave` and computed by one request at a time. Users with
   only `Sys.Audit` could previously start any number of discoveries, each
   holding one of `pvedaemon`'s three workers while it queried every node.
+  Saving a policy that needs the capability check still uses a report at
+  most 10 seconds old.
 
 ### Fixed
 

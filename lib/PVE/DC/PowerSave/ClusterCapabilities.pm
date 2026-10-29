@@ -1,7 +1,7 @@
 package PVE::DC::PowerSave::ClusterCapabilities;
 use strict;
 use warnings;
-use Fcntl qw(:flock O_RDONLY O_WRONLY O_CREAT O_NOFOLLOW);
+use Fcntl qw(:flock O_RDONLY O_WRONLY O_CREAT O_NOFOLLOW O_TRUNC);
 use JSON::PP qw(decode_json encode_json);
 use PVE::DC::PowerSave::Command;
 use Time::HiRes qw(time sleep);
@@ -230,7 +230,7 @@ sub _cache_write {
     my $path = "$self->{cache_dir}/capabilities.json";
     my $tmp = "$path.$$";
     my $written = eval {
-        sysopen(my $fh, $tmp, O_WRONLY | O_CREAT | O_NOFOLLOW, oct('0600')) or die "cannot write $tmp: $!\n";
+        sysopen(my $fh, $tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, oct('0600')) or die "cannot write $tmp: $!\n";
         print {$fh} encode_json($report) or die "cannot write $tmp: $!\n";
         close($fh) or die "cannot close $tmp: $!\n";
         rename($tmp, $path) or die "cannot replace $path: $!\n";

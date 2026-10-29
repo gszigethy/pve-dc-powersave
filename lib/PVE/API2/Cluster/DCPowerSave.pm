@@ -73,7 +73,7 @@ sub _validate_capabilities {
     my ($current, $proposed) = @_;
     return 0 if !PVE::DC::PowerSave::ClusterCapabilities::validation_required($current, $proposed);
     my $collector = PVE::DC::PowerSave::ClusterCapabilities->new;
-    $collector->validate_config($proposed, cluster_capabilities(max_age => $VALIDATION_MAX_AGE));
+    $collector->validate_config($proposed, cluster_capabilities(max_age => $VALIDATION_MAX_AGE, stale_ok => $VALIDATION_MAX_AGE));
     return 1;
 }
 

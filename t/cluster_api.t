@@ -154,7 +154,7 @@ write_cfg(enabled => 0);
 ($res, $err) = run_update(enabled => 1);
 like($err, qr/every node reports fresh/, 'enabling validates capabilities');
 is(stored()->{enabled}, 0, 'a refused enable is not stored');
-is_deeply($capability_calls[0], [max_age => 10], 'validation asks for a report no older than 10 seconds');
+is_deeply($capability_calls[0], [max_age => 10, stale_ok => 10], 'validation accepts no report older than 10 seconds, even while another request computes');
 ok(defined($capability_in_lock) && !$capability_in_lock, 'capability discovery runs before the cluster lock is taken');
 
 write_cfg(enabled => 0, idle_governor => 'schedutil');
