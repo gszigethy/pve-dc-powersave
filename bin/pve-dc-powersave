@@ -15,11 +15,13 @@ use PVE::DC::PowerSave::CpupowerBackend;
 my ($once, $verbose, $config);
 GetOptions('once' => \$once, 'verbose' => \$verbose, 'config=s' => \$config) or die "usage: $0 [--once] [--verbose] [--config path]\n";
 my $collector = PVE::DC::PowerSave::RuntimeStateCollector->new;
-my $controller = PVE::DC::PowerSave::Controller->new(config_path => $config, verbose => $verbose,
+my $controller = PVE::DC::PowerSave::Controller->new(config_path => $config, verbose => $verbose, once => $once,
     collector => $collector, observer => PVE::DC::PowerSave::EventObserver->new($collector),
     backend => PVE::DC::PowerSave::CpupowerBackend->new);
 if ($once) {
-    my $status = $controller->reconcile;
+    # Boot protection counts from system boot and a settled IDLE node stays
+    # idle; see Controller::reconcile_once.
+    my $status = $controller->reconcile_once;
     # The service holds the lock only while it reconciles; say so instead of
     # exiting silently as if the run had happened.
     if (!$status) {

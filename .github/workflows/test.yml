@@ -19,13 +19,12 @@ jobs:
     name: quality
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install Perl and shell analysis tools
         run: |
@@ -106,9 +105,25 @@ jobs:
           done
           systemd-analyze verify --root="$UNIT_ROOT" /etc/systemd/system/pve-dc-powersave.service
 
+      # `secrets.*` cannot be used in `if:`, so this step turns "the token is
+      # configured" into an output. It never prints the token, and only the
+      # analysis step below receives it afterwards.
+      - name: Check whether SonarQube Cloud is configured
+        id: sonar
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "${SONAR_TOKEN}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: SonarQube Cloud analysis
-        if: env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: steps.sonar.outputs.enabled == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Upload coverage reports
         if: always()
