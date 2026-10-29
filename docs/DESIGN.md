@@ -251,9 +251,41 @@ writes require `Sys.Modify`; browser writes require a Proxmox CSRF token. No
 endpoint accepts an arbitrary governor command.
 
 Proxmox has no general third-party UI/API loader for this feature. Installation
-adds small registrations to the Proxmox API modules and web template, keeping
-backups. A `pve-manager` upgrade may remove them. Rerun the installer on every
-node after an upgrade, then confirm the UI and API are available.
+adds small registrations to the Proxmox API modules and web template. Before
+each edit it copies the file to `/var/lib/pve-dc-powersave/backups/` (the newest
+five per file are kept; they are for inspection, never for restoring after an
+upgrade). The helper finds the files in Perl's `@INC` without loading them and
+compiles each edited Perl module before it gives the API daemons a graceful
+`reload-or-restart`; on failure it restores the files from its backups.
+Removal takes the registrations out before the files they load are deleted, and
+the uninstaller verifies this independently of the helper. A `pve-manager`
+upgrade may remove the registrations. Rerun the installer on every node after an
+upgrade, then confirm the UI and API are available.
+
+The installer verifies before it replaces and undoes what it cannot finish:
+
+1. It resolves one source. `--from-dir` is a local tree that must be complete
+   (it never falls back to a download), `--ref`/`--repo` always download, and
+   the two cannot be combined.
+2. It stages all files in a root-only temporary directory and compile-checks
+   every staged module and the daemon with the staged library directory ahead
+   of the node's own PVE libraries. A failure prints Perl's error and leaves
+   the node untouched, because `pvedaemon` and `pveproxy` load these modules
+   at their next restart.
+3. It installs `linux-cpupower` and `python3` only if `dpkg-query` reports them
+   missing; a failing `apt-get update` is then a warning, a failing install an
+   error, both before any installed file is touched.
+4. It backs up the installed files, then replaces them; the module directory
+   is replaced as a whole.
+5. A failure of `systemctl daemon-reload`, the integration helper, the API
+   daemon reload or the API check restores the backup (a failed fresh install
+   is removed, including its registrations), reloads systemd and the API
+   daemons, and exits non-zero. A failure to start only the
+   `pve-dc-powersave` service keeps the files and the API integration and
+   exits non-zero with the cause to investigate.
+6. The default configuration is written only when `/etc/pve/dc-powersave.cfg`
+   does not exist, as a temporary file renamed into place. Without quorum the
+   write fails with a warning, not an error: a missing file means disabled.
 
 Useful diagnostic checks on a node are:
 

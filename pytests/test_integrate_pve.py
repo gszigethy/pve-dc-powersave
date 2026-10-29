@@ -6,6 +6,7 @@ import importlib.util
 import os
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -83,6 +84,10 @@ __PACKAGE__->register_method({
         self.assertTrue(path.is_file())
         self.assertEqual(path.name, "strict.pm")
 
+    def test_perl_module_path_reports_missing_module(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "No/Such/Module.pm not found in Perl @INC"):
+            integrate_pve.perl_module_path("No::Such::Module")
+
     def test_remove_restores_original_files(self) -> None:
         cluster = """package PVE::API2::Cluster;
 use strict;
@@ -123,29 +128,32 @@ __PACKAGE__->register_method({
             index_text = '    <script type="text/javascript" src="/pve2/ext6/locale/x.js"></script>\n'
             index.write_text(index_text, encoding="utf-8")
             calls = []
+            reload_cmd = ["systemctl", "reload-or-restart", "pvedaemon", "pveproxy"]
 
-            def run(cmd, check):
-                calls.append((cmd, check))
+            def run(cmd, **kwargs):
+                calls.append((cmd, kwargs.get("check")))
+                return subprocess.CompletedProcess(cmd, 0, "", "")
 
             with patch.object(integrate_pve.os, "geteuid", return_value=0), \
                     patch.object(integrate_pve, "perl_module_path", side_effect=lambda name: files[name][0]), \
                     patch.object(integrate_pve, "INDEX", index), \
+                    patch.object(integrate_pve, "BACKUP_DIR", root / "backups"), \
                     patch.object(integrate_pve.subprocess, "run", side_effect=run), \
                     patch("builtins.print"):
                 integrate_pve.main([])
                 self.assertIn("# BEGIN pve-dc-powersave", files["PVE::API2::Cluster"][0].read_text())
                 self.assertIn("/pve2/js/dc-powersave.js", index.read_text())
-                self.assertIn((["systemctl", "restart", "pvedaemon", "pveproxy"], True), calls)
+                self.assertIn((reload_cmd, True), calls)
 
                 calls.clear()
                 integrate_pve.main([])
-                self.assertNotIn((["systemctl", "restart", "pvedaemon", "pveproxy"], True), calls)
+                self.assertNotIn((reload_cmd, True), calls)
 
                 integrate_pve.main(["--remove"])
                 for path, text in files.values():
                     self.assertEqual(path.read_text(), text)
                 self.assertEqual(index.read_text(), index_text)
-                self.assertIn((["systemctl", "restart", "pvedaemon", "pveproxy"], True), calls)
+                self.assertIn((reload_cmd, True), calls)
 
     def test_main_requires_root(self) -> None:
         with patch.object(integrate_pve.os, "geteuid", return_value=1000):

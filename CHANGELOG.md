@@ -4,7 +4,56 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- The SonarQube Cloud token is now handed only to the analysis step of the CI
+  workflow. Package installs, test runs and the other steps no longer see it.
+- Release builds and tests now run without write access to the repository.
+  A separate job that only publishes the finished archive and `SHA256SUMS`
+  is the only one allowed to write.
+- CI and release checkouts no longer keep the repository token in
+  `.git/config`.
+
+- A mistyped `--from-dir` no longer falls back to downloading `main` and
+  running it as root. The directory must be a complete source tree, or the
+  installer exits without downloading anything. `--from-dir` cannot be
+  combined with `--ref` or `--repo`, and an explicit `--ref` is honoured even
+  when the script is run from a checkout.
+
 ### Fixed
+
+- Uninstalling a node that was installed with 0.2.1-beta.1 or older no longer
+  deletes the plugin modules while PVE still loads them, which stopped
+  `pvedaemon` and `pveproxy` at their next restart. The uninstaller never runs
+  an integration helper that ignores `--remove`, checks that every
+  registration is gone before it deletes anything, and stops before changing
+  anything, with instructions, when it finds no suitable helper.
+- `integrate-pve.py --remove` now repairs a node whose plugin modules are
+  already missing. It finds `Cluster.pm` and `Nodes.pm` in Perl's `@INC`
+  without loading them, and Perl's own error message is shown when a Perl
+  command fails.
+- The helper reloads `pvedaemon` and `pveproxy` (`systemctl reload-or-restart`)
+  instead of hard-restarting them, including when it rolls a failed edit back.
+  Running API workers are no longer killed.
+
+- The installer compile-checks every module and the daemon against the node's
+  own Proxmox libraries before replacing any installed file. If a later step
+  fails, it restores the previous files (or removes a failed fresh install),
+  reloads systemd and the API daemons, and exits non-zero, instead of leaving
+  a module that `pvedaemon` and `pveproxy` cannot load. A failure to start
+  only the controller service keeps the installed files and says so.
+- The installer installs `linux-cpupower` and `python3` only when they are
+  missing, so an unreachable repository (such as the enterprise repository
+  without a subscription) no longer stops it. When a package is missing, a
+  failing `apt-get update` is a warning.
+- The installer works on a node without quorum: it warns that it could not
+  create `/etc/pve/dc-powersave.cfg` and continues. The default configuration
+  is written as a temporary file and renamed into place, so no node reads a
+  half-written file.
+- Node status now survives manual restarts and crashes of the service: the
+  runtime directory is kept across restarts (a real stop still removes it),
+  so the Nodes API no longer reports `service_not_reporting` and policy saves
+  are no longer refused while the service restarts.
 
 - An empty, whitespace-only, comments-only or truncated
   `/etc/pve/dc-powersave.cfg` no longer reads as "disabled" on every node.
@@ -43,6 +92,23 @@ All notable changes to this project are documented here.
   names a governor that is both requested and failsafe once.
 
 ### Changed
+
+- Backups of `Cluster.pm`, `Nodes.pm` and `index.html.tpl` now live in
+  `/var/lib/pve-dc-powersave/backups/` (mode 0700) instead of next to the PVE
+  files, and only the newest five per file are kept. Existing
+  `*.dc-powersave.backup.*` copies are moved there the next time the installer
+  or uninstaller runs. They are for inspection only; do not restore one after
+  a PVE upgrade. The uninstaller keeps them and tells you where they are.
+- The uninstaller removes `/run/pve-dc-powersave` after stopping the service,
+  but only when it is a real directory and not a symlink.
+
+- The service never hits systemd's start limit and, on systemd 254 or newer
+  (Proxmox VE 9), backs off from 3 seconds to 5 minutes while it keeps
+  failing. Proxmox VE 8 (systemd 252) ignores the two new keys and logs an
+  "Unknown key" notice at `systemctl daemon-reload`.
+- The installer installs every `lib/PVE/DC/PowerSave/*.pm` module and replaces
+  the module directory as a whole, so modules removed in a newer version do
+  not stay behind.
 
 - Boot protection, the idle candidate delay, retry backoff and the time limit
   of every subprocess use the monotonic clock, so a clock step at boot (for
