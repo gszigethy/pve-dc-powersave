@@ -101,13 +101,20 @@ configuration placement are never used to decide workload.
 | IDLE_CANDIDATE | Empty node waiting for delay and re-check | Active |
 | IDLE | Empty node has passed every check | Idle |
 | PROTECTED | Lifecycle, migration, or other local task is in progress | Migration governor |
-| ERROR | CPU management prerequisite/apply/verification failed | Active/failsafe requested |
+| ERROR | Invalid configuration, or CPU management prerequisite/apply/verification failed | Active/failsafe requested |
+| DISABLED | Management is switched off (`enabled: 0`) | Left as it is |
 
 `IDLE_CANDIDATE` prevents a VM stop from instantly becoming an idle transition.
 After `idle_candidate_delay`, the controller collects runtime state again. If
 anything changed or cannot be verified, it cancels the idle transition. A node
 that is already `IDLE` with the idle governor on every policy is not about to
-transition, so later reconciliations skip that second collection.
+transition, so later reconciliations skip that second collection. If the
+confirming collection finds work, or cannot verify the node, the idle delay
+starts over: a short task cannot shorten the delay of the next attempt.
+
+`ERROR` always requests the failsafe (or active) governor and names every
+distinct problem in `last_error`, joined with `; `, so a runtime error does not
+hide a configuration error or the other way round.
 
 ## Workload and protection rules
 
@@ -119,7 +126,9 @@ The following make a node active:
   disk move, or download, including task types this release does not know.
   Only interactive console sessions (`vncproxy`, `vncshell`, `spiceproxy`,
   `spiceshell`, `termproxy`) are ignored.
-- Boot protection following service start.
+- Boot protection: the first `boot_protection_period` seconds after the
+  service started. `pve-dc-powersave --once` counts from system boot instead,
+  because every run is a new process.
 - An unavailable or incomplete runtime/task/cluster-quorum view.
 - Missing `cpupower`, missing frequency policies, unsupported configuration, or
   governor verification failure.
@@ -163,6 +172,25 @@ If the idle governor is missing on even one policy, the node remains active.
 If management is unavailable, the software does not claim that an idle change
 succeeded.
 
+The failsafe governor is held to the same standard. When the requested
+governor cannot be applied or does not read back, the controller sets the
+failsafe governor and reads the policies back again. The status then names the
+governor that is now requested, `actual_governors` shows what the node really
+runs, and a failsafe that also fails adds its own error to `last_error`.
+
+All intervals and deadlines (boot protection, the idle delay, retry backoff and
+the time limit of every `pvesh` and `cpupower` call) use the monotonic clock,
+so a clock step at boot cannot shorten or stretch them. Timestamps in
+`status.json` are epoch seconds. A command that outlives its time limit is
+stopped as a process group: `SIGTERM`, up to 2 s later `SIGKILL`; a process
+that survives even that (uninterruptible sleep) is abandoned and reaped later,
+so a reconciliation is never blocked for more than the limit plus about 4 s.
+
+When a reconciliation cannot run (another one holds the lock) or fails, the
+change that triggered it is not considered handled. The controller retries
+after `event_poll_interval`, doubling the wait up to `reconciliation_interval`,
+until a reconciliation completes.
+
 The Datacenter capability endpoint first intersects the policy governor sets
 on each node, then intersects those node-local results across the cluster. The
 UI only offers this final common set. Enabling a policy is rejected when any
@@ -186,6 +214,25 @@ event_poll_interval: 2
 idle_candidate_delay: 5
 boot_protection_period: 120
 ```
+
+How the shared file is read:
+
+- A **missing** file means the unmanaged defaults, unless this node saw
+  management enabled before; then the missing file is an error.
+- An **existing file without a valid `enabled` line** is an error: an empty,
+  whitespace-only or comments-only file, or one that was cut off before the
+  `enabled` line. It must not look like "disabled" on every node. The node goes
+  to `ERROR` with the failsafe governor and `last_error` says why. Every other
+  missing setting takes its default.
+- An **unknown setting** is a warning and is ignored, so a newer node can write
+  a new key during a rolling upgrade. The UI/API save keeps such lines, in their
+  original order, after the known settings. Warnings appear in `status.json` as
+  `configuration_warnings` (an array, empty when there is nothing to report) and
+  are logged once when they change.
+- A valid **`enabled: 0`** is honoured as `DISABLED` even if other lines are
+  invalid; those problems are listed in `configuration_warnings` as `ignored
+  while management is disabled: ...`. With `enabled: 1`, or an unreadable
+  `enabled`, any invalid line is an `ERROR`.
 
 Start with `enabled: 0`. Confirm `linux-cpupower` is installed and inspect the
 available governors on every node. Use the active governor for migration unless
@@ -247,6 +294,17 @@ cpupower frequency-info
 pve-dc-powersave --once --verbose
 journalctl -u pve-dc-powersave.service
 ```
+
+`--once` reports the state the service would reach and writes `status.json`. It
+is built not to change a node the service has already settled: boot protection
+counts from system boot, and a node published as `IDLE` within the stale
+threshold of the Nodes API (`max(2 * reconciliation_interval + 15, 120)` s)
+counts as having served the idle delay. This shortcut is never taken when any
+work is visible. Otherwise an empty node reports `IDLE_CANDIDATE` first;
+`--once` then waits `idle_candidate_delay`, reconciles once more on the same
+controller, and reports that result. It never makes more than that one extra
+pass. Exit status 1 means another reconciliation held the lock; 2 means the
+node ended in `ERROR`.
 
 Disable the plugin by setting `enabled: 0`; it becomes unmanaged and will not
 make further governor changes. Use your normal host-management method if you
