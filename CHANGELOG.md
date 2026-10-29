@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- The SonarQube Cloud token is now handed only to the analysis step of the CI
+  workflow. Package installs, test runs and the other steps no longer see it.
+- Release builds and tests now run without write access to the repository.
+  A separate job that only publishes the finished archive and `SHA256SUMS`
+  is the only one allowed to write.
+- CI and release checkouts no longer keep the repository token in
+  `.git/config`.
+
 ### Fixed
 
 - Uninstalling a node that was installed with 0.2.1-beta.1 or older no longer

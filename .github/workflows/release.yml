@@ -6,22 +6,25 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Validate and release
+  validate:
+    name: Validate and build
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve release version from changelog
         id: version
@@ -121,12 +124,36 @@ jobs:
           test -s "$ARCHIVE"
           test -s SHA256SUMS
 
+      - name: Upload release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: |
+            pve-dc-powersave-${{ steps.version.outputs.version }}.tar.gz
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish release
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
+          tag_name: ${{ github.ref_name }}
           name: "pve-dc-powersave ${{ github.ref_name }}"
           generate_release_notes: true
           files: |
-            pve-dc-powersave-${{ steps.version.outputs.version }}.tar.gz
+            pve-dc-powersave-${{ needs.validate.outputs.version }}.tar.gz
             SHA256SUMS
           prerelease: ${{ contains(github.ref_name, '-') }}
