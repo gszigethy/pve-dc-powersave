@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.4.0-beta.2] - 2026-11-05
+
+### Changed
+
+- Maintenance release with no behavior changes to the plugin. Updated the
+  pinned `actions/setup-python` (7.1.0) and SonarQube scan action (8.4.0) in
+  CI and release validation, and the `coverage` test dependency (7.17.0).
+
 ## [0.4.0-beta.1] - 2026-10-29
 
 ### Added
