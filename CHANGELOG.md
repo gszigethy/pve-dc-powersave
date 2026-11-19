@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here.
 
+## [0.4.0-beta.3] - 2026-11-19
+
+### Changed
+
+- Maintenance release with no behavior changes to the plugin. Updated the
+  pinned SonarQube scan action (8.5.0) in CI, the `softprops/action-gh-release`
+  action (3.0.4) in release publishing, and the `coverage` test dependency
+  (7.17.3).
+
 ## [0.4.0-beta.2] - 2026-11-05
 
 ### Changed
